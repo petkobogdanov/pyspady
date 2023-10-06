@@ -7,11 +7,9 @@ Boya and Max, can you try to design/describe the interfaces for key functions/cl
 Dicitonary Generate Methods atoms should correspond to coloumns 
 
 gen_GFT
-
   Params:
     numpy array: adjacency matrix
     bool: Normalize 
-    
   Returns:
     a graph fourier transform matrix which is normalized if noramlize true
 
