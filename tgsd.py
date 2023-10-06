@@ -4,23 +4,19 @@ from scipy.fftpack import fft
 import numpy as np
 
 class TGSD:
-    def __init__(self, X_masked, Psi_GFT, Psi_DFT, iter, K, 
+    def __init__(self, iter, K, 
                 lambda_1, lambda_2, lambda_3, rho_1, rho_2,
-                mask, Psi_orth_1, Psi_orth_2, type) -> None:
-        self.X_masked = X_masked        # X (masked signal)
-        self.Psi_GFT = Psi_GFT          # new GFT
-        self.Psi_DFT = Psi_DFT          # new DFT
+                mask, Psi_orth_1, Psi_orth_2) -> None:
         self.iter = iter                # 500
         self.K = K                      # 7
         self.lambda_1 = lambda_1        # .1
         self.lambda_2 = lambda_2        # .1
         self.lambda_3 = lambda_3        # 1
-        self.rho_1 = lambda_1/10        # lambda_1/10
-        self.rho_2 = lambda_2/10        # lambda_2/10
+        self.rho_1 = self.lambda_1/10        # lambda_1/10
+        self.rho_2 = self.lambda_2/10        # lambda_2/10
         self.mask = mask                # mask (vectorized location in 'rand' case)
         self.Psi_orth_1 = Psi_orth_1    # 1
         self.Psi_orth_2 = Psi_orth_2    # 1
-        self.type = type                # 'rand' (type of mask)
 
     def load_matrix(self) -> dict:
         """
@@ -65,7 +61,10 @@ class TGSD:
     """
 
 # test against matlab code
-obj = TGSD('X', 0, 0, 500, 7, 0.1, 0.1, 1, .1, .1, 'mask', 1, 1, 'rand')
-mat = obj.load_matrix()
-obj.build_psi_gft(mat)
-obj.build_psi_dft(10)
+
+obj = TGSD(500, 7, 0.1, 0.1, 1, .1, .1, 'mask', 1, 1) # basic params
+mat = obj.load_matrix() # load data
+type = 'rand'
+X_masked = 'X'
+Psi_GFT = obj.build_psi_gft(mat)
+Psi_DFT = obj.build_psi_dft(10)
