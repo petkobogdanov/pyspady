@@ -35,7 +35,6 @@ def gen_gft(dict: dict, is_normalized: bool) -> list[np.ndarray]:
     D = sp.diags(np.array(adj.sum(axis=0)).flatten())
     L = D - adj # Laplacian matrix
     eigenvalues, psi_gft = np.linalg.eig(L.toarray()) 
-    print(psi_gft[0])
     # normalize eigenvectors = D^1/2*L*D^1/2
     if is_normalized: psi_gft = np.dot(np.dot(np.sqrt(D), L), np.sqrt(D))
     return [psi_gft, eigenvalues]
