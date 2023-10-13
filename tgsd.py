@@ -1,8 +1,7 @@
 import numpy as np
 import scipy.io
-import scipy.sparse.linalg as sla
 from scipy.fftpack import fft
-from scipy.sparse import diags
+import scipy.sparse as sp
 """""
         self.iter = iter                # 500
         self.K = K                      # 7
@@ -24,25 +23,21 @@ def load_matrix() -> dict:
     return scipy.io.loadmat('pyspady/demo_data.mat')
 def gen_gft(dict: dict, is_normalized: bool) -> list[np.ndarray]:
     """
-    Constructs a PsiGFT from matlab dictionary
+    Constructs a PsiGFT from matlab dictionary (for now)
     Args:
         dict (dict): Given matlab dictionary
         is_normalized (bool): Whether the matrix should be normalized
     Returns:
-        list[np.ndarray]: list of numpy arrays in form [eigenvalues, eigenvectors]
+        list[np.ndarray]: list of numpy arrays in form [psi_gft, eigenvalues]
     """
     adj = dict['adj'] # given adj matrix
-    degree = np.array(adj.sum(axis=1)).flatten()
-
-    # diagonal matrix
-    D = diags(degree, format='csc')
+    # calculate sum along columns
+    D = sp.diags(np.array(adj.sum(axis=0)).flatten())
     L = D - adj # Laplacian matrix
-
-    # Matlab: [V, D] = eigs(A, B, sigma))
-    # Python: [D, V] = eigs(A, sigma, B)  
-    eigenvalues, psi_gft = sla.eigs(L) # to-do: eigenvalues only prints out the first 6
-    if is_normalized: # normalize eigenvectors
-        psi_gft /= psi_gft / np.linalg.norm(psi_gft, axis=0) # along the rows
+    eigenvalues, psi_gft = np.linalg.eig(L.toarray()) 
+    print(psi_gft[0])
+    # normalize eigenvectors = D^1/2*L*D^1/2
+    if is_normalized: psi_gft = np.dot(np.dot(np.sqrt(D), L), np.sqrt(D))
     return [psi_gft, eigenvalues]
 
 def gen_dft(t: int) -> np.ndarray:
@@ -62,7 +57,6 @@ def gen_rama(t: int, max_period: int):
         t (int): Number of timesteps
         max_period (int): Number of max periods
     Returns:
-
     """
     
 # test against matlab code
@@ -72,4 +66,3 @@ type = 'rand'
 X_masked = 'X'
 Psi_GFT = gen_gft(mat, False)
 Psi_DFT = gen_dft(200)
-print(Psi_DFT)
