@@ -33,11 +33,19 @@ def gen_gft(dict: dict, is_normalized: bool) -> list[np.ndarray]:
         list[np.ndarray]: list of numpy arrays in form [psi_gft, eigenvalues]
     """
     adj = dict['adj'] # given adj matrix
+    #print(np.linalg.matrix_rank(adj.toarray()))
     # calculate sum along columns
     D = sp.diags(np.array(adj.sum(axis=0)).flatten())
+    #print(np.linalg.matrix_rank(D.toarray()))
     L = D - adj # Laplacian matrix
-    # rank(L)=174
-    eigenvalues, psi_gft = np.linalg.eig(L.toarray()) 
+    #print(np.linalg.matrix_rank(L.toarray()))
+    eigenvalues, psi_gft = np.linalg.eig(L.toarray())
+    # sort eigenvalues by ascending order such that constant vector is in first cell
+    idx = np.argsort(eigenvalues)
+    eigenvalues = eigenvalues[idx]
+    psi_gft = psi_gft[:, idx] 
+    print(eigenvalues)
+    print(psi_gft)
     # normalize eigenvectors = D^1/2*L*D^1/2
     if is_normalized: psi_gft = np.dot(np.dot(np.sqrt(D), L.toarray()), np.sqrt(D))
     return [psi_gft, eigenvalues]
@@ -98,6 +106,6 @@ def gen_rama(t: int, max_period: int):
 mat = load_matrix() # load data
 type = 'rand'
 X_masked = 'X'
-ram = gen_rama(5, 10)
-Psi_GFT = gen_gft(mat, True)
+#ram = gen_rama(5, 10)
+Psi_GFT = gen_gft(mat, False)
 Psi_DFT = gen_dft(200)
