@@ -38,16 +38,22 @@ def gen_gft(dict: dict, is_normalized: bool) -> list[np.ndarray]:
     D = sp.diags(np.array(adj.sum(axis=0)).flatten())
     #print(np.linalg.matrix_rank(D.toarray()))
     L = D - adj # Laplacian matrix
+    # normalize eigenvectors = D^-1/2*L*D^-1/2
+    if is_normalized: 
+        D_sqrt_inv = sp.diags(1.0 / np.sqrt(np.array(D.sum(axis=0)).flatten()))
+        new_L = D_sqrt_inv @ L @ D_sqrt_inv
+        eigenvalues, psi_gft = np.linalg.eig(new_L.toarray())
+        idx = np.argsort(eigenvalues)
+        eigenvalues = eigenvalues[idx]
+        psi_gft = psi_gft[:, idx]
+        return [psi_gft, eigenvalues]
+        
     #print(np.linalg.matrix_rank(L.toarray()))
     eigenvalues, psi_gft = np.linalg.eig(L.toarray())
     # sort eigenvalues by ascending order such that constant vector is in first cell
     idx = np.argsort(eigenvalues)
     eigenvalues = eigenvalues[idx]
-    psi_gft = psi_gft[:, idx] 
-    print(eigenvalues)
-    print(psi_gft)
-    # normalize eigenvectors = D^1/2*L*D^1/2
-    if is_normalized: psi_gft = np.dot(np.dot(np.sqrt(D), L.toarray()), np.sqrt(D))
+    psi_gft = psi_gft[:, idx]
     return [psi_gft, eigenvalues]
 
 def gen_dft(t: int) -> np.ndarray:
@@ -67,20 +73,15 @@ def gen_rama(t: int, max_period: int):
         t (int): Number of timesteps
         max_period (int): Number of max periods
     Returns:
-    """
-
+        Ramanujan periodic dictionary of t timesteps (rows) with max_period
     """""
-    CNA = repmat(CN,floor(rowSize/N),1);
-    CN_cutoff = CN(1:rem(rowSize,N),:);
-    CNA =cat(1,CNA,CN_cutoff);
-    """""
-    A = np.empty((t, 0))
+    A = np.array([])
 
     for n in range(1, max_period+1): # 1:max_period
         c1 = np.zeros((n, 1), dtype=complex)
-        k_orig = np.arange(1, n+1)
+        k_orig = np.arange(1, n+1)        
         k = [k__ for k__ in k_orig if gcd(k__, n) == 1]
-        for n_ in range(n): # goes up to n-1
+        for n_ in range(n): # goes up to n-1 inclusive
             for a in k:
                 c1[n_] = c1[n_] + cmath.exp(1j*2*pi*a*(n_)/n)
         c1 = np.real(c1)
@@ -88,24 +89,32 @@ def gen_rama(t: int, max_period: int):
         k_orig = np.arange(1, n+1)
         k = [k__ for k__ in k_orig if gcd(k__, n) == 1]
         CN_col_size = len(k) # size(k, 2) -> number of columns
-        shifted_arrays = []
-        for j in range(1, CN_col_size+1): # 1:CN_col_size
-            c1_circshift = np.roll(c1, j-1, axis=0)
-            shifted_arrays.append(c1_circshift) # CN = cat(2,CN,circshift(c1,(j-1)))
+        
+        shifted_columns = []
 
-        CN = np.hstack(shifted_arrays) # stack by column
-        CNA = np.full((t // n, 1), CN) # repmat(CN,floor(rowSize/N),1)
-        rem = t % n # rem(rowSize,N)
-        CN_cutoff = CN[1:rem+1, :] # CN(1:rem(rowSize,N),:)
+        for j in range(1, CN_col_size + 1):
+            shift = np.roll(c1, j - 1)
+            shifted_columns.append(shift)
+        # concatenate along the vertical axis
+        CN = np.concatenate(shifted_columns, axis=1)
 
-        CNA = np.concatenate((CNA, CN_cutoff), axis=0) # CNA = cat(1,CNA,CN_cutoff)
-
-        A = np.hstack((A, CNA)) # A = cat(2,A,CNA)
+        #CNA = repmat(CN,floor(rowSize/N),1) 
+        num_repeat = t//n
+        CNA = np.tile(CN, (num_repeat, 1))
+        #CN_cutoff = CN(1:rem(rowSize,N),:);
+        remainder = t%n
+        CN_cutoff = CN[:remainder, :]
+        #CNA = cat(1,CNA,CN_cutoff);
+        CNA = np.concatenate((CNA, CN_cutoff), axis=0)
+        #A=cat(2,A,CNA);
+        if A.size == 0: A = CNA
+        else: A = np.concatenate((A, CNA), axis=1)
+    return A
 # test against matlab code
 
 mat = load_matrix() # load data
 type = 'rand'
 X_masked = 'X'
-#ram = gen_rama(5, 10)
-Psi_GFT = gen_gft(mat, False)
+ram = gen_rama(5, 10)
+Psi_GFT = gen_gft(mat, True)
 Psi_DFT = gen_dft(200)
