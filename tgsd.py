@@ -110,11 +110,59 @@ def gen_rama(t: int, max_period: int):
         if A.size == 0: A = CNA
         else: A = np.concatenate((A, CNA), axis=1)
     return A
-# test against matlab code
+
+def tgsd(X: np.ndarray, psi_d: np.ndarray, psi_orth: bool, phi_d: np.ndarray, phi_orth: bool, mask: np.ndarray, termination_cond, 
+         fit_tolerance, iterations: int, k: int, lambda_1: int, lambda_2: int, lambda_3: int, rho_1: int, rho_2: int):
+    # both are orth; masked
+    def update_d(p_P, p_X, p_mask, p_lambda_3):
+        D = p_P.copy()
+
+        # vectorize, remove missing values in x
+        x = p_X.flatten()
+        x[np.isin(x, p_mask)] = np.nan
+        new_x = x[~np.isnan(x)].reshape(-1, 1)
+
+        print(new_x.shape)
+
+        # vectorize, remove missing values in p
+        p = p_P.flatten()
+        p[np.isin(p, p_mask)] = np.nan
+        new_p = p[~np.isnan(p)].reshape(-1, 1)
+
+        print(new_p.shape)
+
+        # (p + lambda_3*x) * inv(1 + lambda_3)
+        d = (new_p + np.dot(p_lambda_3, new_x)) / (1 + p_lambda_3)
+        # D(setdiff(1:end, mask)) = d
+
+        # TO-DO
+        set_diff = np.setdiff1d(np.arange(len(D)), np.where(p_mask))
+        D[set_diff] = d
+        return D
+    
+    if mask.any():
+        if psi_orth and phi_orth:
+            n, t = X.shape
+            hold, Y1 = psi_d.shape
+            p, t = phi_d.shape
+            I_2 = np.eye(n, p)
+            W = np.zeros((k, p))
+            W[0, 0] = 0.000001
+            Y = np.zeros((Y1, k))
+            sigma = np.eye(k, k)
+            V, Z = 0, Y
+            gamma_1, gamma_2 = Y, W
+            obj_old, obj = 0, []
+            I_Y = np.eye(np.dot(W.dot(phi_d), (W.dot(phi_d)).T).shape[0])
+            I_W = np.eye(np.dot(psi_d.dot(Y).T, psi_d.dot(Y)).shape[0])
+            for i in range(iterations):
+                P = np.dot(np.dot(psi_d, Y), np.dot(W, phi_d))
+                D = update_d(P, X, mask, lambda_3)
+    return None
 
 mat = load_matrix() # load data
-type = 'rand'
-X_masked = 'X'
 ram = gen_rama(5, 10)
-Psi_GFT = gen_gft(mat, True)
+Psi_GFT = gen_gft(mat, False)
+Psi_GFT = Psi_GFT[0] # eigenvectors
 Psi_DFT = gen_dft(200)
+tgsd(mat['X'], Psi_GFT, True, Psi_DFT, True, mat['mask'], None, None, 500, 7, .1, .1, .1, .01, .01)
