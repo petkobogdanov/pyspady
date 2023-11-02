@@ -25,8 +25,7 @@ def load_matrix() -> dict:
     Returns:
         dict: dictionary with variable names as keys, and loaded matrices as values
     """
-    return scipy.io.loadmat('pyspady/demo_data.mat')
-
+    return scipy.io.loadmat('demo_data.mat')
 
 def gen_gft(dict: dict, is_normalized: bool) -> list[np.ndarray]:
     """
