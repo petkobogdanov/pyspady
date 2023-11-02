@@ -4,6 +4,7 @@ from scipy.fftpack import fft
 import scipy.sparse as sp
 from math import gcd, pi
 import cmath
+
 """""
         self.iter = iter                # 500
         self.K = K                      # 7
@@ -16,6 +17,8 @@ import cmath
         self.Psi_orth_1 = Psi_orth_1    # 1
         self.Psi_orth_2 = Psi_orth_2    # 1
 """""
+
+
 def load_matrix() -> dict:
     """
     Loads matrix from file in directory
@@ -23,6 +26,7 @@ def load_matrix() -> dict:
         dict: dictionary with variable names as keys, and loaded matrices as values
     """
     return scipy.io.loadmat('demo_data.mat')
+
 def gen_gft(dict: dict, is_normalized: bool) -> list[np.ndarray]:
     """
     Constructs a PsiGFT from matlab dictionary (for now)
@@ -32,14 +36,14 @@ def gen_gft(dict: dict, is_normalized: bool) -> list[np.ndarray]:
     Returns:
         list[np.ndarray]: list of numpy arrays in form [psi_gft, eigenvalues]
     """
-    adj = dict['adj'] # given adj matrix
-    #print(np.linalg.matrix_rank(adj.toarray()))
+    adj = dict['adj']  # given adj matrix
+    # print(np.linalg.matrix_rank(adj.toarray()))
     # calculate sum along columns
     D = sp.diags(np.array(adj.sum(axis=0)).flatten())
-    #print(np.linalg.matrix_rank(D.toarray()))
-    L = D - adj # Laplacian matrix
+    # print(np.linalg.matrix_rank(D.toarray()))
+    L = D - adj  # Laplacian matrix
     # normalize eigenvectors = D^-1/2*L*D^-1/2
-    if is_normalized: 
+    if is_normalized:
         D_sqrt_inv = sp.diags(1.0 / np.sqrt(np.array(D.sum(axis=0)).flatten()))
         new_L = D_sqrt_inv @ L @ D_sqrt_inv
         eigenvalues, psi_gft = np.linalg.eig(new_L.toarray())
@@ -47,14 +51,15 @@ def gen_gft(dict: dict, is_normalized: bool) -> list[np.ndarray]:
         eigenvalues = eigenvalues[idx]
         psi_gft = psi_gft[:, idx]
         return [psi_gft, eigenvalues]
-        
-    #print(np.linalg.matrix_rank(L.toarray()))
+
+    # print(np.linalg.matrix_rank(L.toarray()))
     eigenvalues, psi_gft = np.linalg.eig(L.toarray())
     # sort eigenvalues by ascending order such that constant vector is in first cell
     idx = np.argsort(eigenvalues)
     eigenvalues = eigenvalues[idx]
     psi_gft = psi_gft[:, idx]
     return [psi_gft, eigenvalues]
+
 
 def gen_dft(t: int) -> np.ndarray:
     """
@@ -64,7 +69,8 @@ def gen_dft(t: int) -> np.ndarray:
     Returns:
         np.ndarray: new DFT matrix
     """
-    return (1/np.sqrt(t)) * fft(np.eye(t))
+    return (1 / np.sqrt(t)) * fft(np.eye(t))
+
 
 def gen_rama(t: int, max_period: int):
     """
@@ -77,19 +83,19 @@ def gen_rama(t: int, max_period: int):
     """""
     A = np.array([])
 
-    for n in range(1, max_period+1): # 1:max_period
+    for n in range(1, max_period + 1):  # 1:max_period
         c1 = np.zeros((n, 1), dtype=complex)
-        k_orig = np.arange(1, n+1)        
+        k_orig = np.arange(1, n + 1)
         k = [k__ for k__ in k_orig if gcd(k__, n) == 1]
-        for n_ in range(n): # goes up to n-1 inclusive
+        for n_ in range(n):  # goes up to n-1 inclusive
             for a in k:
-                c1[n_] = c1[n_] + cmath.exp(1j*2*pi*a*(n_)/n)
+                c1[n_] = c1[n_] + cmath.exp(1j * 2 * pi * a * (n_) / n)
         c1 = np.real(c1)
 
-        k_orig = np.arange(1, n+1)
+        k_orig = np.arange(1, n + 1)
         k = [k__ for k__ in k_orig if gcd(k__, n) == 1]
-        CN_col_size = len(k) # size(k, 2) -> number of columns
-        
+        CN_col_size = len(k)  # size(k, 2) -> number of columns
+
         shifted_columns = []
 
         for j in range(1, CN_col_size + 1):
@@ -98,20 +104,24 @@ def gen_rama(t: int, max_period: int):
         # concatenate along the vertical axis
         CN = np.concatenate(shifted_columns, axis=1)
 
-        #CNA = repmat(CN,floor(rowSize/N),1) 
-        num_repeat = t//n
+        # CNA = repmat(CN,floor(rowSize/N),1)
+        num_repeat = t // n
         CNA = np.tile(CN, (num_repeat, 1))
-        #CN_cutoff = CN(1:rem(rowSize,N),:);
-        remainder = t%n
+        # CN_cutoff = CN(1:rem(rowSize,N),:);
+        remainder = t % n
         CN_cutoff = CN[:remainder, :]
-        #CNA = cat(1,CNA,CN_cutoff);
+        # CNA = cat(1,CNA,CN_cutoff);
         CNA = np.concatenate((CNA, CN_cutoff), axis=0)
-        #A=cat(2,A,CNA);
-        if A.size == 0: A = CNA
-        else: A = np.concatenate((A, CNA), axis=1)
+        # A=cat(2,A,CNA);
+        if A.size == 0:
+            A = CNA
+        else:
+            A = np.concatenate((A, CNA), axis=1)
     return A
 
-def tgsd(X: np.ndarray, psi_d: np.ndarray, psi_orth: bool, phi_d: np.ndarray, phi_orth: bool, mask: np.ndarray, termination_cond, 
+
+def tgsd(X: np.ndarray, psi_d: np.ndarray, psi_orth: bool, phi_d: np.ndarray, phi_orth: bool, mask: np.ndarray,
+         termination_cond,
          fit_tolerance, iterations: int, k: int, lambda_1: int, lambda_2: int, lambda_3: int, rho_1: int, rho_2: int):
     # both are orth; masked
     def update_d(p_P, p_X, p_mask, p_lambda_3):
@@ -139,7 +149,7 @@ def tgsd(X: np.ndarray, psi_d: np.ndarray, psi_orth: bool, phi_d: np.ndarray, ph
         set_diff = np.setdiff1d(np.arange(len(D)), np.where(p_mask))
         D[set_diff] = d
         return D
-    
+
     if mask.any():
         if psi_orth and phi_orth:
             n, t = X.shape
@@ -158,11 +168,13 @@ def tgsd(X: np.ndarray, psi_d: np.ndarray, psi_orth: bool, phi_d: np.ndarray, ph
             for i in range(iterations):
                 P = np.dot(np.dot(psi_d, Y), np.dot(W, phi_d))
                 D = update_d(P, X, mask, lambda_3)
+                print('hello')
     return None
 
-mat = load_matrix() # load data
+
+mat = load_matrix()  # load data
 ram = gen_rama(5, 10)
 Psi_GFT = gen_gft(mat, False)
-Psi_GFT = Psi_GFT[0] # eigenvectors
+Psi_GFT = Psi_GFT[0]  # eigenvectors
 Psi_DFT = gen_dft(200)
 tgsd(mat['X'], Psi_GFT, True, Psi_DFT, True, mat['mask'], None, None, 500, 7, .1, .1, .1, .01, .01)
