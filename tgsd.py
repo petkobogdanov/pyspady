@@ -126,26 +126,18 @@ def tgsd(X: np.ndarray, psi_d: np.ndarray, psi_orth: bool, phi_d: np.ndarray, ph
     # both are orth; masked
     def update_d(p_P, p_X, p_mask, p_lambda_3):
         D = p_P.copy()
-
         # vectorize, remove missing values in x
         x = p_X.flatten()
         x[np.isin(x, p_mask)] = np.nan
         new_x = x[~np.isnan(x)].reshape(-1, 1)
-
-        print(new_x.shape)
-
         # vectorize, remove missing values in p
         p = p_P.flatten()
         p[np.isin(p, p_mask)] = np.nan
         new_p = p[~np.isnan(p)].reshape(-1, 1)
 
-        print(new_p.shape)
-
         # (p + lambda_3*x) * inv(1 + lambda_3)
         d = (new_p + np.dot(p_lambda_3, new_x)) / (1 + p_lambda_3)
         # D(setdiff(1:end, mask)) = d
-
-        # TO-DO
         set_diff = np.setdiff1d(np.arange(len(D)), np.where(p_mask))
         D[set_diff] = d
         return D
