@@ -139,7 +139,10 @@ def tgsd(X: np.ndarray, psi_d: np.ndarray, psi_orth: bool, phi_d: np.ndarray, ph
         d = (new_p + np.dot(p_lambda_3, new_x)) / (1 + p_lambda_3)
         # D(setdiff(1:end, mask)) = d
         set_diff = np.setdiff1d(np.arange(len(D)), np.where(p_mask))
-        D[set_diff] = d
+        d_reshaped = d[:len(set_diff), :]
+
+        # Set the rows in D specified by set_diff to d_reshaped
+        D[set_diff] = d_reshaped
         return D
 
     if mask.any():
@@ -157,7 +160,7 @@ def tgsd(X: np.ndarray, psi_d: np.ndarray, psi_orth: bool, phi_d: np.ndarray, ph
             obj_old, obj = 0, []
             I_Y = np.eye(np.dot(W.dot(phi_d), (W.dot(phi_d)).T).shape[0])
             I_W = np.eye(np.dot(psi_d.dot(Y).T, psi_d.dot(Y)).shape[0])
-            for i in range(iterations):
+            for i in range(1):
                 P = np.dot(np.dot(psi_d, Y), np.dot(W, phi_d))
                 D = update_d(P, X, mask, lambda_3)
                 print('hello')
