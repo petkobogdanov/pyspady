@@ -1,3 +1,5 @@
+import math
+
 import numpy as np
 import scipy.io
 from scipy.fftpack import fft
@@ -78,9 +80,10 @@ def gen_rama(t: int, max_period: int):
     Args:
         t (int): Number of timesteps
         max_period (int): Number of max periods
+
     Returns:
         Ramanujan periodic dictionary of t timesteps (rows) with max_period
-    """""
+    """
     A = np.array([])
 
     for n in range(1, max_period + 1):  # 1:max_period
@@ -123,29 +126,26 @@ def gen_rama(t: int, max_period: int):
 def tgsd(X: np.ndarray, psi_d: np.ndarray, psi_orth: bool, phi_d: np.ndarray, phi_orth: bool, mask: np.ndarray,
          termination_cond,
          fit_tolerance, iterations: int, k: int, lambda_1: int, lambda_2: int, lambda_3: int, rho_1: int, rho_2: int):
-    # both are orth; masked
+
     def update_d(p_P, p_X, p_mask, p_lambda_3):
-        D = p_P.copy()
-        # vectorize, remove missing values in x
-        x = p_X.flatten()
-        x[np.isin(x, p_mask)] = np.nan
-        new_x = x[~np.isnan(x)].reshape(-1, 1)
-        # vectorize, remove missing values in p
-        p = p_P.flatten()
-        p[np.isin(p, p_mask)] = np.nan
-        new_p = p[~np.isnan(p)].reshape(-1, 1)
+        """
+        Learns D via P, X, mask, and lambda 3
+        Args:
+            p_P: ΨYWΦ
+            p_X: Input X
+            p_mask: Indices represent masked indices in D
+            p_lambda_3: Some lambda value
 
-        # (p + lambda_3*x) * inv(1 + lambda_3)
-        d = (new_p + np.dot(p_lambda_3, new_x)) / (1 + p_lambda_3)
-        # D(setdiff(1:end, mask)) = d
-        set_diff = np.setdiff1d(np.arange(len(D)), np.where(p_mask))
-        d_reshaped = d[:len(set_diff), :]
-
-        # Set the rows in D specified by set_diff to d_reshaped
-        D[set_diff] = d_reshaped
+        Returns:
+            D = (P +𝜆3Ω ⊙ X) ⊘ (I +𝜆3Ω)
+        """
+        p_mask, missing_mask, observed_mask = p_mask-1, np.zeros(p_P.shape), np.ones(p_P.shape)
+        missing_mask[p_mask % 175, p_mask // 175] = 1
+        D = ((p_P + p_lambda_3 * p_X) / (1+p_lambda_3) * (observed_mask-missing_mask)) + (p_P * missing_mask)
         return D
 
     if mask.any():
+        # both are orth; masked
         if psi_orth and phi_orth:
             n, t = X.shape
             hold, Y1 = psi_d.shape
@@ -158,12 +158,17 @@ def tgsd(X: np.ndarray, psi_d: np.ndarray, psi_orth: bool, phi_d: np.ndarray, ph
             V, Z = 0, Y
             gamma_1, gamma_2 = Y, W
             obj_old, obj = 0, []
-            I_Y = np.eye(np.dot(W.dot(phi_d), (W.dot(phi_d)).T).shape[0])
-            I_W = np.eye(np.dot(psi_d.dot(Y).T, psi_d.dot(Y)).shape[0])
+            I_Y = np.eye(np.dot(np.dot(W, phi_d), np.dot(W, phi_d).T).shape[0])
+            I_W = np.eye(np.dot(np.dot(psi_d, Y).T, np.dot(psi_d, Y)).shape[0])
             for i in range(1):
                 P = np.dot(np.dot(psi_d, Y), np.dot(W, phi_d))
                 D = update_d(P, X, mask, lambda_3)
-                print('hello')
+                #     B=Sigma*W*Phi;
+                #     Y=(2*Psi'*D*B'+rho_1*Z+Gamma_1)*inv(2*(B*B')+rho_1*I_y+exp(-15));
+                B = np.dot(sigma, np.dot(W, phi_d))
+                Y = 2 * np.dot(np.dot(psi_d.T, D), B.T) + np.dot(rho_1, Z) + gamma_1
+                Y_next = np.linalg.inv(2 * np.dot(B, B.T) + np.dot(rho_1, I_Y) + math.exp(-15))
+
     return None
 
 
@@ -172,4 +177,4 @@ ram = gen_rama(5, 10)
 Psi_GFT = gen_gft(mat, False)
 Psi_GFT = Psi_GFT[0]  # eigenvectors
 Psi_DFT = gen_dft(200)
-tgsd(mat['X'], Psi_GFT, True, Psi_DFT, True, mat['mask'], None, None, 500, 7, .1, .1, .1, .01, .01)
+tgsd(mat['X'], Psi_GFT, True, Psi_DFT, True, mat['mask'], None, None, 500, 7, .1, .1, 1, .01, .01)
