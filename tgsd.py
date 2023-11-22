@@ -7,6 +7,8 @@ import scipy.sparse as sp
 from math import gcd, pi
 import cmath
 
+from scipy.sparse.linalg import eigsh
+
 """""
         self.iter = iter                # 500
         self.K = K                      # 7
@@ -48,18 +50,19 @@ def gen_gft(dict: dict, is_normalized: bool) -> list[np.ndarray]:
     if is_normalized:
         D_sqrt_inv = sp.diags(1.0 / np.sqrt(np.array(D.sum(axis=0)).flatten()))
         new_L = D_sqrt_inv @ L @ D_sqrt_inv
-        eigenvalues, psi_gft = np.linalg.eig(new_L.toarray())
-        idx = np.argsort(eigenvalues)
+        eigenvalues, psi_gft = np.linalg.eigh(new_L.toarray())
+        idx = np.argsort(np.abs(eigenvalues))
         eigenvalues = eigenvalues[idx]
         psi_gft = psi_gft[:, idx]
         return [psi_gft, eigenvalues]
 
     # print(np.linalg.matrix_rank(L.toarray()))
-    eigenvalues, psi_gft = np.linalg.eig(L.toarray())
+    eigenvalues, psi_gft = np.linalg.eigh(L.toarray())
     # sort eigenvalues by ascending order such that constant vector is in first cell
-    idx = np.argsort(eigenvalues)
+    idx = np.argsort(np.abs(eigenvalues))
     eigenvalues = eigenvalues[idx]
     psi_gft = psi_gft[:, idx]
+
     return [psi_gft, eigenvalues]
 
 
@@ -123,10 +126,18 @@ def gen_rama(t: int, max_period: int):
     return A
 
 
-def tgsd(X: np.ndarray, psi_d: np.ndarray, psi_orth: bool, phi_d: np.ndarray, phi_orth: bool, mask: np.ndarray,
+def tgsd(X: np.ndarray, psi_d: np.ndarray, phi_d: np.ndarray, mask: np.ndarray,
          termination_cond,
          fit_tolerance, iterations: int, k: int, lambda_1: int, lambda_2: int, lambda_3: int, rho_1: int, rho_2: int):
-
+    def is_orthonormal(p_psi_or_phi):
+        """
+        Determines if graph or time series dictionary is orthonormal
+        Args:
+            p_psi_or_phi: Specified graph or time series dictionary
+        Returns:
+            True if orthonormal, false otherwise
+        """
+        return np.allclose(np.dot(p_psi_or_phi.T, p_psi_or_phi), np.eye(p_psi_or_phi.shape[1]), atol=1e-10)
     def update_d(p_P, p_X, p_mask, p_lambda_3):
         """
         Learns D via P, X, mask, and lambda 3
@@ -140,35 +151,88 @@ def tgsd(X: np.ndarray, psi_d: np.ndarray, psi_orth: bool, phi_d: np.ndarray, ph
             D = (P +𝜆3Ω ⊙ X) ⊘ (I +𝜆3Ω)
         """
         p_mask, missing_mask, observed_mask = p_mask-1, np.zeros(p_P.shape), np.ones(p_P.shape)
-        missing_mask[p_mask % 175, p_mask // 175] = 1
-        D = ((p_P + p_lambda_3 * p_X) / (1+p_lambda_3) * (observed_mask-missing_mask)) + (p_P * missing_mask)
-        return D
+        missing_mask[p_mask % p_P.shape[0], p_mask // p_P.shape[0]] = 1
+        return ((p_P + p_lambda_3 * p_X) / (1+p_lambda_3) * (observed_mask-missing_mask)) + (p_P * missing_mask)
 
+    def get_object(p_mask, p_D, p_X, p_phi, p_psi, p_Y, p_sigma, p_W, p_lambda_1, p_lambda_2, p_lambda_3):
+        """
+        Returns a new object represented by equation X−YΨWΦ‖
+        Args:
+            p_mask: Some specified mask
+            p_D: Some specified D
+            p_X: Some specified X
+            p_phi: Some specified Phi dictionary
+            p_psi: Some specified Psi dictionary
+            p_Y: Some specified Y
+            p_sigma: Some specified Sigma
+            p_W: Some specified W
+            p_lambda_1: Some specified lambda 1 value
+            p_lambda_2: Some specified lambda 2 value
+            p_lambda_3: Some specified lambda 2 value
+
+        Returns:
+            New object represented by X−YΨWΦ‖
+        """
+        # temp=X(:)-D(:);
+        # term3=norm(temp(setdiff(1:end,mask)));
+
+        p_mask, missing_mask, observed_mask = p_mask-1, np.zeros(p_X.shape), np.ones(p_X.shape)
+        missing_mask[p_mask % 175, p_mask // 175] = 1
+        term_3 = np.linalg.norm((observed_mask-missing_mask) * (p_D-p_X))
+        #obj_new = norm(D-Psi*Y*Sigma*W*Phi)+lambda_1*norm(Y,1)+lambda_2*norm(W,1)+lambda_3*term3;
+        return np.linalg.norm(p_D - p_psi @ p_Y @ p_sigma @ p_W @ p_phi) \
+                  + p_lambda_1 * np.linalg.norm(p_Y, ord=1) + p_lambda_2 * np.linalg.norm(p_W, ord=1) + p_lambda_3 * term_3
     if mask.any():
         # both are orth; masked
-        if psi_orth and phi_orth:
+        if is_orthonormal(psi_d) or is_orthonormal(phi_d):
             n, t = X.shape
             hold, Y1 = psi_d.shape
             p, t = phi_d.shape
             I_2 = np.eye(n, p)
             W = np.zeros((k, p))
-            W[0, 0] = 0.000001
+            W[0, 0] = .000001
             Y = np.zeros((Y1, k))
             sigma = np.eye(k, k)
             V, Z = 0, Y
             gamma_1, gamma_2 = Y, W
-            obj_old, obj = 0, []
-            I_Y = np.eye(np.dot(np.dot(W, phi_d), np.dot(W, phi_d).T).shape[0])
-            I_W = np.eye(np.dot(np.dot(psi_d, Y).T, np.dot(psi_d, Y)).shape[0])
-            for i in range(1):
-                P = np.dot(np.dot(psi_d, Y), np.dot(W, phi_d))
+            obj_old, objs = 0, []
+            I_Y = np.eye((W @ phi_d @ (W @ phi_d).T).shape[0])
+            I_W = np.eye(((psi_d @ Y).T @ psi_d @ Y).shape[0])
+
+            for i in range(1, 1+iterations):
+                P = psi_d @ Y @ W @ phi_d
                 D = update_d(P, X, mask, lambda_3)
                 #     B=Sigma*W*Phi;
                 #     Y=(2*Psi'*D*B'+rho_1*Z+Gamma_1)*inv(2*(B*B')+rho_1*I_y+exp(-15));
-                B = np.dot(sigma, np.dot(W, phi_d))
-                Y = 2 * np.dot(np.dot(psi_d.T, D), B.T) + np.dot(rho_1, Z) + gamma_1
-                Y_next = np.linalg.inv(2 * np.dot(B, B.T) + np.dot(rho_1, I_Y) + math.exp(-15))
+                B = sigma @ W @ phi_d
+                Y = (2 * psi_d.T @ D @ B.T + rho_1 * Z + gamma_1) @ np.linalg.inv(2 * (B @ B.T) + rho_1 * I_Y + math.exp(-15))
+                # Update Z:
+                # h = Y-gamma_1 / rho_1
+                # Z = sign(h).*max(abs(h)-lambda_1/rho_1, 0)
+                h = Y - gamma_1 / rho_1
+                Z = np.sign(h) * np.maximum(np.abs(h) - lambda_1 / rho_1, 0)
+                # A = psi*Y*sigma
+                A = psi_d @ Y
+                # W = inv(2*(A')*A + I_W*rho_2) * (2*A'*D*phi'+rho_2*V+gamma_2)
+                W_first = np.linalg.inv(2 * A.T @ A + I_W * rho_2)
+                W_final = 2 * A.T @ D @ phi_d.T + rho_2 * V + gamma_2
+                W = W_first @ W_final
+                # Update V:
+                # h= W-Gamma_2/rho_2;
+                # V = sign(h).*max(abs(h)-lambda_2/rho_2,0);
+                h = W - gamma_2 / rho_2
+                V = np.sign(h) * np.maximum(np.abs(h)-lambda_2/rho_2, 0)
 
+                gamma_1, gamma_2 = gamma_1 + rho_1*(Z-Y), gamma_2 + rho_2*(V-W)
+                rho_1, rho_2 = min(rho_1*1.1, 1e5), min(rho_2*1.1, 1e5)
+                # Stop condition
+                if i % 25 == 0:
+                    obj_new = get_object(mask, D, X, phi_d, psi_d, Y, sigma, W, lambda_1, lambda_2, lambda_3)
+                    objs = [objs, obj_new]
+                    residual = abs(obj_old-obj_new)
+                    print(f"obj-{i}={obj_new}, residual-{i}={residual}")
+                    if residual < 1e-6: break
+                    else: obj_old = obj_new
     return None
 
 
@@ -177,4 +241,4 @@ ram = gen_rama(5, 10)
 Psi_GFT = gen_gft(mat, False)
 Psi_GFT = Psi_GFT[0]  # eigenvectors
 Psi_DFT = gen_dft(200)
-tgsd(mat['X'], Psi_GFT, True, Psi_DFT, True, mat['mask'], None, None, 500, 7, .1, .1, 1, .01, .01)
+tgsd(mat['X'], Psi_GFT, Psi_DFT, mat['mask'], None, None, 2, 7, .1, .1, 1, .01, .01)
