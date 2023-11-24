@@ -43,7 +43,7 @@ def gen_gft(dict: dict, is_normalized: bool) -> list[np.ndarray]:
     adj = dict['adj']  # given adj matrix
     # print(np.linalg.matrix_rank(adj.toarray()))
     # calculate sum along columns
-    D = sp.diags(np.array(adj.sum(axis=0)).flatten())
+    D = np.diag(np.array(adj.sum(axis=0)).flatten())
     # print(np.linalg.matrix_rank(D.toarray()))
     L = D - adj  # Laplacian matrix
     # normalize eigenvectors = D^-1/2*L*D^-1/2
@@ -55,14 +55,13 @@ def gen_gft(dict: dict, is_normalized: bool) -> list[np.ndarray]:
         eigenvalues = eigenvalues[idx]
         psi_gft = psi_gft[:, idx]
         return [psi_gft, eigenvalues]
-
     # print(np.linalg.matrix_rank(L.toarray()))
-    eigenvalues, psi_gft = np.linalg.eigh(L.toarray())
+    eigenvalues, psi_gft = np.linalg.eigh(L, UPLO='U')
     # sort eigenvalues by ascending order such that constant vector is in first cell
-    idx = np.argsort(np.abs(eigenvalues))
+    idx = np.argsort(eigenvalues)
     eigenvalues = eigenvalues[idx]
     psi_gft = psi_gft[:, idx]
-
+    psi_gft = np.squeeze(np.asarray(psi_gft))
     return [psi_gft, eigenvalues]
 
 
@@ -152,7 +151,7 @@ def tgsd(X: np.ndarray, psi_d: np.ndarray, phi_d: np.ndarray, mask: np.ndarray,
         """
         p_mask, missing_mask, observed_mask = p_mask-1, np.zeros(p_P.shape), np.ones(p_P.shape)
         missing_mask[p_mask % p_P.shape[0], p_mask // p_P.shape[0]] = 1
-        return ((p_P + p_lambda_3 * p_X) / (1+p_lambda_3) * (observed_mask-missing_mask)) + (p_P * missing_mask)
+        return (p_P + p_lambda_3 * (observed_mask-missing_mask) * p_X) / (1 + p_lambda_3 * (observed_mask-missing_mask))
 
     def get_object(p_mask, p_D, p_X, p_phi, p_psi, p_Y, p_sigma, p_W, p_lambda_1, p_lambda_2, p_lambda_3):
         """
@@ -205,23 +204,23 @@ def tgsd(X: np.ndarray, psi_d: np.ndarray, phi_d: np.ndarray, mask: np.ndarray,
                 #     B=Sigma*W*Phi;
                 #     Y=(2*Psi'*D*B'+rho_1*Z+Gamma_1)*inv(2*(B*B')+rho_1*I_y+exp(-15));
                 B = sigma @ W @ phi_d
-                Y = (2 * psi_d.T @ D @ B.T + rho_1 * Z + gamma_1) @ np.linalg.inv(2 * (B @ B.T) + rho_1 * I_Y + math.exp(-15))
+                # Assuming psi_d, D, B, Z, gamma_1, I_Y are defined
+
+                Y = (2 * psi_d.T @ D @ B.T + rho_1 * Z + gamma_1) @ np.linalg.pinv(2 * (B @ B.T) + rho_1 * I_Y + math.exp(-15), rcond=1e-15)
                 # Update Z:
                 # h = Y-gamma_1 / rho_1
                 # Z = sign(h).*max(abs(h)-lambda_1/rho_1, 0)
-                h = Y - gamma_1 / rho_1
-                Z = np.sign(h) * np.maximum(np.abs(h) - lambda_1 / rho_1, 0)
+                h = Y - (gamma_1 / rho_1)
+                Z = np.sign(h) * np.maximum(np.abs(h) - (lambda_1 / rho_1), 0)
                 # A = psi*Y*sigma
-                A = psi_d @ Y
+                A = psi_d @ Y @ sigma
                 # W = inv(2*(A')*A + I_W*rho_2) * (2*A'*D*phi'+rho_2*V+gamma_2)
-                W_first = np.linalg.inv(2 * A.T @ A + I_W * rho_2)
-                W_final = 2 * A.T @ D @ phi_d.T + rho_2 * V + gamma_2
-                W = W_first @ W_final
+                W = np.linalg.pinv(2 * A.T @ A + I_W * rho_2, rcond=1e-15) @ (2 * A.T @ D @ phi_d.T + rho_2 * V + gamma_2)
                 # Update V:
                 # h= W-Gamma_2/rho_2;
                 # V = sign(h).*max(abs(h)-lambda_2/rho_2,0);
-                h = W - gamma_2 / rho_2
-                V = np.sign(h) * np.maximum(np.abs(h)-lambda_2/rho_2, 0)
+                h = W - (gamma_2 / rho_2)
+                V = np.sign(h) * np.maximum(np.abs(h)-(lambda_2/rho_2), 0)
 
                 gamma_1, gamma_2 = gamma_1 + rho_1*(Z-Y), gamma_2 + rho_2*(V-W)
                 rho_1, rho_2 = min(rho_1*1.1, 1e5), min(rho_2*1.1, 1e5)
