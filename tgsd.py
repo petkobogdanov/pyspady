@@ -8,7 +8,7 @@ import sparse
 from tensorly.contrib.sparse import tensor as sp_tensor
 import scipy.sparse as sp
 from scipy.fftpack import fft
-
+import time
 import matplotlib.pyplot as plt
 from Y_unittest import TestYConversion
 from W_unittest import TestWConversion
@@ -247,7 +247,7 @@ def tgsd(X: np.ndarray, psi_d: np.ndarray, phi_d: np.ndarray, mask: np.ndarray,
 
         p_mask, missing_mask, observed_mask = p_mask - 1, np.zeros(p_X.shape), np.ones(p_X.shape)
         missing_mask[p_mask % p_X.shape[0], p_mask // p_X.shape[0]] = 1
-        term_3 = np.linalg.norm((observed_mask - missing_mask) * (p_D - p_X), ord=2)
+        term_3 = np.linalg.norm((observed_mask - missing_mask) * (p_X - p_D), ord=2)
         # obj_new = norm(D-Psi*Y*Sigma*W*Phi)+lambda_1*norm(Y,1)+lambda_2*norm(W,1)+lambda_3*term3;
         return np.linalg.norm(p_D - p_psi @ p_Y @ p_sigma @ p_W @ p_phi, ord=2) \
                + p_lambda_1 * np.linalg.norm(np.abs(p_Y), ord=1) + p_lambda_2 * np.linalg.norm(np.abs(p_W),
@@ -380,15 +380,21 @@ def tgsd(X: np.ndarray, psi_d: np.ndarray, phi_d: np.ndarray, mask: np.ndarray,
     return None
 
 
-def mdtm(is_syn, X, mask, phi_type, phi_d, P, lam, rho, K, epsilon, num_modes):
+def mdtm(is_syn, X, mask, phi_type, phi_d, P, lam, rho, K, epsilon, num_modes, count_nnz=None, num_iters_check=None, mask_complex=None):
     def gen_syn_X(p_syn):
         # Create a list of matrices from the cell array
         return tl.kruskal_to_tensor((np.ones(p_syn['Kgen'][0, 0]), [matrix for matrix in p_syn['PhiYg'][0]]))
 
     def gen_syn_lambda_rho(p_syn):
-        syn_lambda = [0.000001 for _ in p_syn['dimension']]
+        syn_lambda = [0.000001 for _ in p_syn['dimension'][0,]]
         syn_rho = [val * 5 for val in syn_lambda]
-        return [syn_lambda, syn_rho]
+        return syn_lambda, syn_rho
+
+    def mttkrp(p_D, p_PhiY, p_n):
+        matricize_along_n = tl.unfold(p_D, mode=p_n)
+        factors = [p_PhiY[i] for i in range(len(p_PhiY)) if i != p_n]
+        khatri_rao_product = tl.tenalg.khatri_rao(factors)
+        return matricize_along_n @ khatri_rao_product
 
     if is_syn:
         s_data = load_syn_data()
@@ -401,16 +407,24 @@ def mdtm(is_syn, X, mask, phi_type, phi_d, P, lam, rho, K, epsilon, num_modes):
     # this ignores the try statements at initialization in MDTM.m
     # cast to Double for mask indexing i.e. double_X = double(X)
     D = X
-    normalize_scaling = np.ones((K, 1))
+    normalize_scaling = np.ones(K)
     dimensions = X.shape
-    num_iters_check = 10
-    mask_complex = 1
-    [mask_i, mask_j, mask_t] = np.unravel_index(np.array(mask, dtype=np.intp), dimensions)
-    # mask_tensor = sptensor([mask_i', mask_j', mask_t'], 1);
-    # stack indices and create coordinate list sparse tensor, convert to tensor format
-    mask_tensor = sp_tensor(sparse.COO(np.vstack((mask_i, mask_j, mask_t)), np.ones_like(mask_i), shape=dimensions), dtype='float')
+    count_nnz = 0 if not count_nnz else count_nnz
+    num_iters_check = 10 if not num_iters_check else num_iters_check
+    set_difference = None if not mask_complex else set(range(1, dimensions[0] * dimensions[1] * dimensions[2] + 1)) - set(mask)
+    mask_complex = 1 if not mask_complex else mask_complex
+    if mask and mask_complex == 1:
+        double_X = X.astype(np.longdouble)
+    else:
+        mask_i, mask_j, mask_t = np.unravel_index(np.array(mask, dtype=np.intp), dimensions)
+        # mask_tensor = sptensor([mask_i', mask_j', mask_t'], 1);
+        # stack indices and create coordinate list sparse tensor, convert to tensor format
+        mask_tensor = sp_tensor(sparse.COO(np.vstack((mask_i, mask_j, mask_t)), np.ones_like(mask_i), shape=dimensions),
+                                dtype='float')
 
-    PhiPhiEV = PhiPhiLAM = [None] * num_modes
+    np.random.seed(6)
+
+    PhiPhiEV, PhiPhiLAM = [None] * num_modes, [None] * num_modes
     # dictionary decomposition
     for i in range(num_modes):
         if phi_type[i] == "not_ortho_dic":
@@ -422,23 +436,136 @@ def mdtm(is_syn, X, mask, phi_type, phi_d, P, lam, rho, K, epsilon, num_modes):
             PhiPhiEV[i] = V
             retained_rank = min(phi_d[0, i].shape)
             # diag(S(1:retained_rank, 1:retained_rank)).^2
-            PhiPhiLAM[i] = np.diag(np.diag(S[:retained_rank])**2)
+            PhiPhiLAM[i] = (np.diag(S[:retained_rank]) ** 2).reshape(-1, 1)
 
-    maxiters = 500
+    MAX_ITERS = 500
     # 1:num_modes, @(x) isequal(sort(x), 1:num_modes)
-    dimorder_check = lambda x: sorted(x) == list(range(1, num_modes+1))
-    dimorder = np.arange(1, num_modes+1)
+    dimorder_check = lambda x: sorted(x) == list(range(1, num_modes + 1))
+    dimorder = np.arange(1, num_modes + 1)
     gamma = [None] * num_modes
-    gamma[dimorder[0]-1] = 0 # indexing
 
     YPhiInitInner = np.zeros((K, K, num_modes))
-    Yinit = PhiYInit = [None] * num_modes
+    Y_init, PhiYInit = [None] * num_modes, [None] * num_modes
     for n in range(len(dimorder)):
-        Yinit[n] = np.random.rand(P[0, n][0, 0], K)
-        PhiYInit[n] = (phi_d[0, n] @ Yinit[n]) if phi_type[n] in ["not_ortho_dic", "ortho_dic"] else Yinit[n]
-        YPhiInitInner[:, :, n] = PhiYInit[n].T @ PhiYInit[n] if phi_type[n] == "not_ortho_dic" else Yinit[n].T @ Yinit[n]
+        Y_init[n] = np.random.rand(P[0, n][0, 0], K)
+        PhiYInit[n] = (phi_d[0, n] @ Y_init[n]) if phi_type[n] in ["not_ortho_dic", "ortho_dic"] else Y_init[n]
+        YPhiInitInner[:, :, n] = PhiYInit[n].T @ PhiYInit[n] if phi_type[n] == "not_ortho_dic" else Y_init[n].T @ \
+                                                                                                    Y_init[n]
         gamma[n] = 0
 
+    # set up for initialization, U and the fit
+    Y = Y_init
+    PhiY = PhiYInit
+    YPhi_Inner = YPhiInitInner
+    Z = Y
+    fit = 0
+    recon_t = tl.kruskal_to_tensor((normalize_scaling, [matrix for matrix in PhiY]))
+    normX = tl.norm(tl.tensor(X), order=2)
+    objs = np.zeros((MAX_ITERS, num_modes))
+    objs[0, 0] = tl.sqrt((normX ** 2) + (tl.norm(recon_t, order=2) ** 2) - 2 * tl.tenalg.inner(X, recon_t))
+    # iterate until convergence
+    for i in range(1, MAX_ITERS + 1):
+        tic = time.time()  # start time
+        for n in range(len(dimorder)):
+            if phi_type[n] == "not_ortho_dic":
+                # calculate Unew = Phi X_(n) * KhatriRao(all U except n, 'r')
+                phi_d_rao_other_factors = phi_d[0, n].T @ mttkrp(D, PhiY, n) + rho[n] * Z[n] - gamma[n]
+                selected_elements = YPhi_Inner[:, :, list(range(n)) + list(range(n + 1, num_modes))]
+                product_vector = np.prod(selected_elements, axis=2)
+                pv, Ev = np.linalg.eigh(product_vector)
+                pv = pv.reshape(-1, 1)
+                CC = PhiPhiEV[n].T @ phi_d_rao_other_factors @ Ev
+                Y[n] = CC / (rho[n] + PhiPhiLAM[n] @ pv.T)
+                Y[n] = PhiPhiEV[n] @ Y[n] @ Ev.T
+                PhiY[n] = phi_d[0, n] @ Y[n]
+                # normalize_scaling = sqrt(sum(Y{n}.^2, 1))' else max(max(abs(Y{n}), [], 1), 1)'
+                normalize_scaling = np.sqrt(np.sum(Y[n] ** 2, axis=0)).reshape(-1, 1).T if i == 1 else np.maximum(
+                    np.max(np.abs(Y[n]), axis=0), 1).reshape(-1, 1).T
+                Y[n] /= normalize_scaling
+                PhiY[n] = phi_d[0, n] @ Y[n]
+                YPhi_Inner[:, :, n] = PhiY[n].T @ PhiY[n]
+
+            elif phi_type[n] == "ortho_dic":
+                phi_d_rao_other_factors = phi_d[0, n].T @ mttkrp(D, PhiY, n) + rho[n] * Z[n] - gamma[n]
+                selected_elements = YPhi_Inner[:, :, list(range(n)) + list(range(n + 1, num_modes))]
+                product_vector = np.prod(selected_elements, axis=2)
+                denominator = product_vector + rho[n] * np.eye(K)
+                Y[n] = np.linalg.solve(denominator.T, phi_d_rao_other_factors.T).T
+                normalize_scaling = np.sqrt(np.sum(Y[n] ** 2, axis=0)).reshape(-1, 1).T if i == 1 else np.maximum(
+                    np.max(np.abs(Y[n]), axis=0), 1).reshape(-1, 1).T
+                Y[n] /= normalize_scaling
+                PhiY[n] = phi_d[0, n] @ Y[n]
+                YPhi_Inner[:, :, n] = Y[n].T @ Y[n]
+
+            elif phi_type[n] == "no_dic":
+                Y[n] = mttkrp(D, PhiY, n)
+                selected_elements = YPhi_Inner[:, :, list(range(n)) + list(range(n + 1, num_modes))]
+                inversion_product_vector = np.prod(selected_elements, axis=2)
+                Y[n] = np.linalg.solve(inversion_product_vector.T, Y[n].T).T
+                normalize_scaling = np.sqrt(np.sum(Y[n] ** 2, axis=0)).reshape(-1, 1).T if i == 1 else np.maximum(
+                    np.max(np.abs(Y[n]), axis=0), 1).reshape(-1, 1).T
+                Y[n] /= normalize_scaling
+                PhiY[n] = Y[n]
+                YPhi_Inner[:, :, n] = Y[n].T @ Y[n]
+            else:
+                return
+
+            h = Y[n] - gamma[n] / rho[n]
+            Z[n] = np.sign(h) * np.maximum(np.abs(h) - (lam[n] / rho[n]), 0)
+            gamma[n] = gamma[n] + rho[n] * (Z[n] - Y[n])
+            if count_nnz != 0:
+                nnz = 0
+                for m in range(len(dimensions)):
+                    # nnz = nnz + length(find(Z{m} ~= 0)
+                    nnz = nnz + np.count_nonzero(Z[m])
+                objs[i, 2] = nnz
+
+        if mask:
+            if mask_complex == 1:
+                # set D to reconstructed values and cast to double for mask indexing
+                recon_t = tl.kruskal_to_tensor((normalize_scaling, [matrix for matrix in PhiY]))
+                D = recon_t
+                missing_mask, observed_mask = np.zeros(double_X.shape), np.ones(double_X.shape)
+                missing_mask[(mask % (double_X.shape[0] * double_X.shape[1])) // double_X.shape[1],
+                             (mask % (double_X.shape[0] * double_X.shape[1])) % double_X.shape[1],
+                             mask // (double_X.shape[0] * double_X.shape[1])] = 1
+
+                # d = (recon_t(:) + lambda * X(:)) * inv(1 + lambda)
+                # D(setDifference) = d
+                D = ((observed_mask-missing_mask) * (recon_t + lam[0] @ double_X)) / 1 + lam[0]
+            else: # watch out for this
+                D = X
+                recon_t = tl.kruskal_to_tensor((normalize_scaling, [matrix for matrix in PhiY]))
+                # D([mask_i', mask_j', mask_t']) = mask(ktensor(normalize_scaling, PhiY), mask_tensor)
+                # recover values from K tensor
+                D[mask_i, mask_j, mask_t] = np.min(1, 1.01**i * 0.01) * \
+                                            sparse.COO.from_numpy(tl.kruskal_to_tensor((normalize_scaling, [matrix for matrix in PhiY]))) @ mask_tensor
+        else:
+            D = X
+
+        time_one_iter = time.time()
+
+        if i % num_iters_check == 0:
+            sparsity_constraint = 0
+            for n in range(len(dimorder)):
+                sparsity_constraint = sparsity_constraint + lam[n] * np.sum(np.abs(Y[n]))
+
+            if not mask or mask_complex == 1:
+                recon_t = tl.kruskal_to_tensor((np.squeeze(normalize_scaling), [matrix for matrix in PhiY]))
+
+            recon_error = tl.sqrt((normX ** 2) + (tl.norm(recon_t, order=2) ** 2) - 2 * tl.tenalg.inner(X, recon_t))
+
+            fit = 1 - (recon_error/normX)
+
+            objs[i//num_iters_check, 0] = fit # 2, 1 == 1, 0
+            objs[i//num_iters_check, 1] = objs[i//num_iters_check - 1, 1] + time_one_iter # 2, 2 and 1, 2
+            fit_change = np.abs(objs[i//num_iters_check, 0] - objs[i//num_iters_check - 1, 0])
+
+            print(f"Iteration={i} Fit={fit} f-delta={fit_change} Reconstruction Error={recon_error} Sparsity Constraint={sparsity_constraint} Total={objs[i//num_iters_check, :]}")
+
+            if fit_change < epsilon:
+                print("Algo has met fit change tolerance")
+                break
 
     return None
 
