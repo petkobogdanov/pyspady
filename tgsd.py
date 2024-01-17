@@ -1,4 +1,5 @@
 import cmath
+import itertools
 import math
 from math import gcd, pi
 import numpy as np
@@ -12,6 +13,9 @@ import time
 import matplotlib.pyplot as plt
 from Y_unittest import TestYConversion
 from W_unittest import TestWConversion
+
+from numba import njit, prange, jit
+from numba.typed import List
 
 
 def load_matrix() -> dict:
@@ -126,7 +130,7 @@ def gen_rama(t: int, max_period: int):
     return A
 
 
-def tgsd(X: np.ndarray, psi_d: np.ndarray, phi_d: np.ndarray, mask: np.ndarray,
+def tgsd(X, psi_d, phi_d, mask,
          iterations: int, k: int, lambda_1: int, lambda_2: int, lambda_3: int, rho_1: int, rho_2: int):
     def is_orthonormal(p_psi_or_phi):
         """
@@ -348,9 +352,9 @@ def tgsd(X: np.ndarray, psi_d: np.ndarray, phi_d: np.ndarray, mask: np.ndarray,
 
         test_instance_w = TestWConversion()
         ans_w = test_instance_w.test_w_complex_conversion(i, W)
-        plt.plot(i, ans_y, 'ro', markersize=5)
-        plt.plot(i, ans_w, 'bo', markersize=5)
-        plt.pause(0.1)  # Adjust the pause duration as needed
+        # plt.plot(i, ans_y, 'ro', markersize=5)
+        # plt.plot(i, ans_w, 'bo', markersize=5)
+        # plt.pause(0.1)  # Adjust the pause duration as needed
         print("---")
         # Update V:
         # h= W-Gamma_2/rho_2;
@@ -371,16 +375,67 @@ def tgsd(X: np.ndarray, psi_d: np.ndarray, phi_d: np.ndarray, mask: np.ndarray,
                 break
             else:
                 obj_old = obj_new
-    plt.xlabel('Iteration')
-    plt.ylabel('Values')
-    plt.title('Convergence of Y and W')
-    plt.grid(True)
+    # plt.xlabel('Iteration')
+    # plt.ylabel('Values')
+    # plt.title('Convergence of Y and W')
+    # plt.grid(True)
     # Display the final plot
-    plt.show()
-    return None
+    # plt.show()
+    return Y, W
 
+@njit
+def unfold_fast(tensor, mode):
+    I, J, K = tensor.shape
+    if mode == 0:
+        # Mode-0 unfolding (I, J * K)
+        unfolded = np.empty((I, J * K))
+        for i in range(I):
+            for j in range(J):
+                for k in range(K):
+                    unfolded[i, j * K + k] = tensor[i, j, k]
+        return unfolded
+    elif mode == 1:
+        # Mode-1 unfolding (J, I * K)
+        unfolded = np.empty((J, I * K))
+        for j in range(J):
+            for i in range(I):
+                for k in range(K):
+                    unfolded[j, i * K + k] = tensor[i, j, k]
+        return unfolded
+    elif mode == 2:
+        # Mode-2 unfolding (K, I * J)
+        unfolded = np.empty((K, I * J))
+        for k in range(K):
+            for i in range(I):
+                for j in range(J):
+                    unfolded[k, i * J + j] = tensor[i, j, k]
+        return unfolded
 
-def mdtm(is_syn, X, mask, phi_type, phi_d, P, lam, rho, K, epsilon, num_modes, count_nnz=None, num_iters_check=None, mask_complex=None):
+@njit(parallel=True, cache=True)
+def khatri_rao(matrices):
+    # Check if matrices are 2D and have the same number of columns
+    n_columns = matrices[0].shape[1]
+    # Compute the number of rows in the result
+    n_rows = 1
+    for m in matrices:
+        n_rows *= m.shape[0]
+
+    # Initialize the result matrix
+    result = np.ones((n_rows, n_columns))
+
+    for col in prange(n_columns):
+        # For each column, compute the Kronecker product
+        for i in prange(matrices[0].shape[0]):
+            for j in prange(matrices[1].shape[0]):
+                # The row index in the result is computed based on the row indices in each matrix
+                result_row_index = i * matrices[1].shape[0] + j
+                # Compute the product for the current column
+                result[result_row_index, col] = matrices[0][i, col] * matrices[1][j, col]
+
+    return result
+
+def mdtm(is_syn, X, mask, phi_type, phi_d, P, lam, rho, K, epsilon, num_modes, count_nnz=None, num_iters_check=None,
+         mask_complex=None):
     def gen_syn_X(p_syn):
         # Create a list of matrices from the cell array
         return tl.kruskal_to_tensor((np.ones(p_syn['Kgen'][0, 0]), [matrix for matrix in p_syn['PhiYg'][0]]))
@@ -391,10 +446,15 @@ def mdtm(is_syn, X, mask, phi_type, phi_d, P, lam, rho, K, epsilon, num_modes, c
         return syn_lambda, syn_rho
 
     def mttkrp(p_D, p_PhiY, p_n):
-        matricize_along_n = tl.unfold(p_D, mode=p_n)
-        factors = [p_PhiY[i] for i in range(len(p_PhiY)) if i != p_n]
-        khatri_rao_product = tl.tenalg.khatri_rao(factors)
-        return matricize_along_n @ khatri_rao_product
+        return tl.unfold(p_D, mode=p_n) @ tl.tenalg.khatri_rao([p_PhiY[i] for i in range(len(p_PhiY)) if i != p_n])
+
+    def updated_mttkrp(p_D, p_PhiY, p_n):
+        foo = [p_PhiY[i] for i in range(len(p_PhiY)) if i != n]
+        typed_foo = List()
+        for mat in foo:
+            typed_foo.append(np.ascontiguousarray(mat))
+        return unfold_fast @ khatri_rao(typed_foo)
+
 
     if is_syn:
         s_data = load_syn_data()
@@ -404,6 +464,10 @@ def mdtm(is_syn, X, mask, phi_type, phi_d, P, lam, rho, K, epsilon, num_modes, c
         phi_d = s_data['Phi']
         P = s_data['P']
 
+    #for i in range(1):
+    #    phi_d[0, i] = np.array([])
+    #    phi_type[i] = "no_dic"
+    #    P[0, i] = np.array([[X.shape[i]]])
     # this ignores the try statements at initialization in MDTM.m
     # cast to Double for mask indexing i.e. double_X = double(X)
     D = X
@@ -411,7 +475,8 @@ def mdtm(is_syn, X, mask, phi_type, phi_d, P, lam, rho, K, epsilon, num_modes, c
     dimensions = X.shape
     count_nnz = 0 if not count_nnz else count_nnz
     num_iters_check = 10 if not num_iters_check else num_iters_check
-    set_difference = None if not mask_complex else set(range(1, dimensions[0] * dimensions[1] * dimensions[2] + 1)) - set(mask)
+    set_difference = None if not mask_complex else set(
+        range(1, dimensions[0] * dimensions[1] * dimensions[2] + 1)) - set(mask)
     mask_complex = 1 if not mask_complex else mask_complex
     if mask and mask_complex == 1:
         double_X = X.astype(np.longdouble)
@@ -421,11 +486,11 @@ def mdtm(is_syn, X, mask, phi_type, phi_d, P, lam, rho, K, epsilon, num_modes, c
         # stack indices and create coordinate list sparse tensor, convert to tensor format
         mask_tensor = sp_tensor(sparse.COO(np.vstack((mask_i, mask_j, mask_t)), np.ones_like(mask_i), shape=dimensions),
                                 dtype='float')
-
     np.random.seed(6)
 
     PhiPhiEV, PhiPhiLAM = [None] * num_modes, [None] * num_modes
     # dictionary decomposition
+
     for i in range(num_modes):
         if phi_type[i] == "not_ortho_dic":
             # U and V are unitary matrices and S contains singular values as a diagonal matrix
@@ -464,17 +529,17 @@ def mdtm(is_syn, X, mask, phi_type, phi_d, P, lam, rho, K, epsilon, num_modes, c
     objs = np.zeros((MAX_ITERS, num_modes))
     objs[0, 0] = tl.sqrt((normX ** 2) + (tl.norm(recon_t, order=2) ** 2) - 2 * tl.tenalg.inner(X, recon_t))
     # iterate until convergence
+    avg_time = 0
     for i in range(1, MAX_ITERS + 1):
         tic = time.time()  # start time
         for n in range(len(dimorder)):
             if phi_type[n] == "not_ortho_dic":
                 # calculate Unew = Phi X_(n) * KhatriRao(all U except n, 'r')
-                phi_d_rao_other_factors = phi_d[0, n].T @ mttkrp(D, PhiY, n) + rho[n] * Z[n] - gamma[n]
-                selected_elements = YPhi_Inner[:, :, list(range(n)) + list(range(n + 1, num_modes))]
-                product_vector = np.prod(selected_elements, axis=2)
+                product_vector = np.prod(YPhi_Inner[:, :, list(range(n)) + list(range(n + 1, num_modes))], axis=2)
                 pv, Ev = np.linalg.eigh(product_vector)
                 pv = pv.reshape(-1, 1)
-                CC = PhiPhiEV[n].T @ phi_d_rao_other_factors @ Ev
+
+                CC = PhiPhiEV[n].T @ (phi_d[0, n].T @ mttkrp(D, PhiY, n) + rho[n] * Z[n] - gamma[n]) @ Ev
                 Y[n] = CC / (rho[n] + PhiPhiLAM[n] @ pv.T)
                 Y[n] = PhiPhiEV[n] @ Y[n] @ Ev.T
                 PhiY[n] = phi_d[0, n] @ Y[n]
@@ -486,11 +551,11 @@ def mdtm(is_syn, X, mask, phi_type, phi_d, P, lam, rho, K, epsilon, num_modes, c
                 YPhi_Inner[:, :, n] = PhiY[n].T @ PhiY[n]
 
             elif phi_type[n] == "ortho_dic":
-                phi_d_rao_other_factors = phi_d[0, n].T @ mttkrp(D, PhiY, n) + rho[n] * Z[n] - gamma[n]
-                selected_elements = YPhi_Inner[:, :, list(range(n)) + list(range(n + 1, num_modes))]
-                product_vector = np.prod(selected_elements, axis=2)
-                denominator = product_vector + rho[n] * np.eye(K)
-                Y[n] = np.linalg.solve(denominator.T, phi_d_rao_other_factors.T).T
+                # phi_d_rao_other_factors = (phi_d[0, n].T @ mttkrp(D, PhiY, n) + rho[n] * Z[n] - gamma[n])
+                product_vector = np.prod(YPhi_Inner[:, :, list(range(n)) + list(range(n + 1, num_modes))], axis=2)
+                # denominator = product_vector + rho[n] * np.eye(K)
+                Y[n] = np.linalg.solve((product_vector + rho[n] * np.eye(K)).T,
+                                       (phi_d[0, n].T @ mttkrp(D, PhiY, n) + rho[n] * Z[n] - gamma[n]).T).T
                 normalize_scaling = np.sqrt(np.sum(Y[n] ** 2, axis=0)).reshape(-1, 1).T if i == 1 else np.maximum(
                     np.max(np.abs(Y[n]), axis=0), 1).reshape(-1, 1).T
                 Y[n] /= normalize_scaling
@@ -499,9 +564,9 @@ def mdtm(is_syn, X, mask, phi_type, phi_d, P, lam, rho, K, epsilon, num_modes, c
 
             elif phi_type[n] == "no_dic":
                 Y[n] = mttkrp(D, PhiY, n)
-                selected_elements = YPhi_Inner[:, :, list(range(n)) + list(range(n + 1, num_modes))]
-                inversion_product_vector = np.prod(selected_elements, axis=2)
-                Y[n] = np.linalg.solve(inversion_product_vector.T, Y[n].T).T
+                # inversion_product_vector = np.prod(YPhi_Inner[:, :, list(range(n)) + list(range(n + 1, num_modes))], axis=2)
+                Y[n] = np.linalg.solve(
+                    (np.prod(YPhi_Inner[:, :, list(range(n)) + list(range(n + 1, num_modes))], axis=2)).T, Y[n].T).T
                 normalize_scaling = np.sqrt(np.sum(Y[n] ** 2, axis=0)).reshape(-1, 1).T if i == 1 else np.maximum(
                     np.max(np.abs(Y[n]), axis=0), 1).reshape(-1, 1).T
                 Y[n] /= normalize_scaling
@@ -518,7 +583,7 @@ def mdtm(is_syn, X, mask, phi_type, phi_d, P, lam, rho, K, epsilon, num_modes, c
                 for m in range(len(dimensions)):
                     # nnz = nnz + length(find(Z{m} ~= 0)
                     nnz = nnz + np.count_nonzero(Z[m])
-                objs[i, 2] = nnz
+                objs[i - 1, 2] = nnz
 
         if mask:
             if mask_complex == 1:
@@ -532,19 +597,21 @@ def mdtm(is_syn, X, mask, phi_type, phi_d, P, lam, rho, K, epsilon, num_modes, c
 
                 # d = (recon_t(:) + lambda * X(:)) * inv(1 + lambda)
                 # D(setDifference) = d
-                D = ((observed_mask-missing_mask) * (recon_t + lam[0] @ double_X)) / 1 + lam[0]
-            else: # watch out for this
+                D = ((observed_mask - missing_mask) * (recon_t + lam[0] @ double_X)) / 1 + lam[0]
+            else:  # watch out for this
                 D = X
                 recon_t = tl.kruskal_to_tensor((normalize_scaling, [matrix for matrix in PhiY]))
                 # D([mask_i', mask_j', mask_t']) = mask(ktensor(normalize_scaling, PhiY), mask_tensor)
                 # recover values from K tensor
-                D[mask_i, mask_j, mask_t] = np.min(1, 1.01**i * 0.01) * \
-                                            sparse.COO.from_numpy(tl.kruskal_to_tensor((normalize_scaling, [matrix for matrix in PhiY]))) @ mask_tensor
+                D[mask_i, mask_j, mask_t] = np.min(1, 1.01 ** i * 0.01) * \
+                                            sparse.COO.from_numpy(tl.kruskal_to_tensor(
+                                                (normalize_scaling, [matrix for matrix in PhiY]))) @ mask_tensor
         else:
             D = X
 
         time_one_iter = time.time()
-
+        total_time_one_iter = time_one_iter - tic
+        avg_time += total_time_one_iter
         if i % num_iters_check == 0:
             sparsity_constraint = 0
             for n in range(len(dimorder)):
@@ -555,16 +622,18 @@ def mdtm(is_syn, X, mask, phi_type, phi_d, P, lam, rho, K, epsilon, num_modes, c
 
             recon_error = tl.sqrt((normX ** 2) + (tl.norm(recon_t, order=2) ** 2) - 2 * tl.tenalg.inner(X, recon_t))
 
-            fit = 1 - (recon_error/normX)
+            fit = 1 - (recon_error / normX)
 
-            objs[i//num_iters_check, 0] = fit # 2, 1 == 1, 0
-            objs[i//num_iters_check, 1] = objs[i//num_iters_check - 1, 1] + time_one_iter # 2, 2 and 1, 2
-            fit_change = np.abs(objs[i//num_iters_check, 0] - objs[i//num_iters_check - 1, 0])
+            objs[i // num_iters_check, 0] = fit  # 2, 1 == 1, 0
+            objs[i // num_iters_check, 1] = objs[i // num_iters_check - 1, 1] + total_time_one_iter  # 2, 2 and 1, 2
+            fit_change = np.abs(objs[i // num_iters_check, 0] - objs[i // num_iters_check - 1, 0])
 
-            print(f"Iteration={i} Fit={fit} f-delta={fit_change} Reconstruction Error={recon_error} Sparsity Constraint={sparsity_constraint} Total={objs[i//num_iters_check, :]}")
+            print(
+                f"Iteration={i} Fit={fit} f-delta={fit_change} Reconstruction Error={recon_error} Sparsity Constraint={sparsity_constraint} Total={objs[i // num_iters_check, :]}")
 
             if fit_change < epsilon:
-                print("Algo has met fit change tolerance")
+                print(f"{avg_time}, {i}")
+                print(f"Algo has met fit change tolerance, avg time: {avg_time / i}")
                 break
 
     return None
@@ -581,4 +650,4 @@ mdtm(is_syn=True, X=None, mask=[], phi_type=None, phi_d=None, P=None, lam=None, 
 # non_orth_psi = Psi_GFT + 0.1 * np.outer(Psi_GFT[:, 0], Psi_GFT[:, 1])
 # non_orth_phi = Phi_DFT + 0.1 * np.outer(Phi_DFT[:, 0], Phi_DFT[:, 1])
 
-# tgsd(mat['X'], Psi_GFT, Phi_DFT, mat['mask'], None, None, 100, 7, .1, .1, 1, .01, .01)
+# tgsd(mat['X'], Psi_GFT, Phi_DFT, mat['mask'], 100, 7, .1, .1, 1, .01, .01)
