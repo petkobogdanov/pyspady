@@ -18,8 +18,8 @@ Testing
 
 Todo
 
-* Some dictionaries
-* Front end
+1. Some dictionaries
+2. Front end
   * data formats (mask as well)
    * matrix input
    * row,col, etc. value inputs 
