@@ -20,30 +20,30 @@ Todo
 
 1. Some dictionaries
 2. Front end
-  * data formats (mask as well)
-   * matrix input
-   * row,col, etc. value inputs 
-   * enter csv 
-  * make defaul parameters
-  * config parameters 
-  * how to return missing values 
+  1. data formats (mask as well)
+   1. matrix input
+   2. row,col, etc. value inputs 
+   3. enter csv 
+  1. make defaul parameters
+  2. config parameters 
+  3. how to return missing values 
   
-* Auto config 
-  * auto parameter selections 
-  * graph learning
-  * estimate time to complete 
-  * return explanatory figs? 
-* Different optimizers 
-  * gradient based
-  * OMP for differnt mods
-* Other Models  
-  * 2D-OMP
-  * Low Rank Dictionary Selection 
-  * Different regualriers
-    * coloums sparsity 
-* Dictionary selection
-  * 1D Screening  
-* Prep datasets as use cases 
+3. Auto config 
+  1. auto parameter selections 
+  2. graph learning
+  3. estimate time to complete 
+  4. return explanatory figs? 
+4. Different optimizers 
+  1. gradient based
+  2. OMP for differnt mods
+5. Other Models  
+  1. 2D-OMP
+  2. Low Rank Dictionary Selection 
+  3. Different regualriers
+     1. coloums sparsity 
+6. Dictionary selection
+  1. 1D Screening  
+7. Prep datasets as use cases 
   
 -------------------------------------------------------------------------------------
 
