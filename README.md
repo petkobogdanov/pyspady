@@ -20,7 +20,7 @@ Todo
 
 1. Some dictionaries
 2. Front end
-  1. data formats (mask as well)
+ 1. data formats (mask as well)
    1. matrix input
    2. row,col, etc. value inputs 
    3. enter csv 
