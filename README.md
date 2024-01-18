@@ -29,10 +29,10 @@ Todo
    3. how to return missing values 
   
 3. Auto config 
- 1. auto parameter selections 
- 2. graph learning
- 3. estimate time to complete 
- 4. return explanatory figs? 
+   1. auto parameter selections 
+   2. graph learning
+   3. estimate time to complete 
+   4. return explanatory figs? 
 4. Different optimizers 
  1. gradient based
  2. OMP for differnt mods
