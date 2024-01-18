@@ -21,12 +21,12 @@ Todo
 1. Some dictionaries
 2. Front end
    1. data formats (mask as well)
-   2. matrix input
-   3. row,col, etc. value inputs 
-   4. enter csv 
-  1. make defaul parameters
-  2. config parameters 
-  3. how to return missing values 
+    1. matrix input
+    2. row,col, etc. value inputs 
+    3. enter csv 
+   1. make defaul parameters
+   2. config parameters 
+   3. how to return missing values 
   
 3. Auto config 
  1. auto parameter selections 
