@@ -5,47 +5,47 @@ Done
 optimization 
 * TGSD
   * vannila
-2 MDTD
-  a vannila 
+* MDTD
+  * vannila 
   
 
 Implementation
-1 dictionaries
-  a 
-2 
+* dictionaries
+  
+
 
 Testing
 
 Todo
 
-1 Some dictionaries
-2 Front end
-  a data formats (mask as well)
-    i matrix input
-    ii row,col, etc. value inputs 
-    iii enter csv 
-  b make defaul parameters
-  c config parameters 
-  d how to return missing values 
+* Some dictionaries
+* Front end
+  * data formats (mask as well)
+   * matrix input
+   * row,col, etc. value inputs 
+   * enter csv 
+  * make defaul parameters
+  * config parameters 
+  * how to return missing values 
   
-3 Auto config 
-  a auto parameter selections 
-  b graph learning
-  c estimate time to complete 
-  d return explanatory figs? 
-4 Different optimizers 
-  a gradient based
-  b OMP for differnt mods
-5 Other Models  
-  a 2D-OMP
-  b Low Rank Dictionary Selection 
-  c Different regualriers
-    i coloums sparsity 
-6 Dictionary selection
-  a 1D Screening  
-7 Prep datasets as use cases 
+* Auto config 
+  * auto parameter selections 
+  * graph learning
+  * estimate time to complete 
+  * return explanatory figs? 
+* Different optimizers 
+  * gradient based
+  * OMP for differnt mods
+* Other Models  
+  * 2D-OMP
+  * Low Rank Dictionary Selection 
+  * Different regualriers
+    * coloums sparsity 
+* Dictionary selection
+  * 1D Screening  
+* Prep datasets as use cases 
   
-
+-------------------------------------------------------------------------------------
 
 TODO
 * Boya and Max, can you try to design/describe the interfaces for key functions/classes. For example, we will have something for dictionry generation, then we will have diffeernt solvers for TGSD: 2D OMP and L1, tensors, etc
