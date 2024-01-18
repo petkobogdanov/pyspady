@@ -4,7 +4,7 @@ PySpady - a Python sparse multi dictionary coding library
 Done
 optimization 
 * TGSD
-  ** vannila
+  * vannila
 2 MDTD
   a vannila 
   
