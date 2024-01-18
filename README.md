@@ -19,17 +19,13 @@ Testing
 Todo
 
 1 Some dictionaries
-
 2 Front end
   a data formats (mask as well)
     i matrix input
     ii row,col, etc. value inputs 
     iii enter csv 
-    
   b make defaul parameters
-  
   c config parameters 
-  
   d how to return missing values 
   
 3 Auto config 
