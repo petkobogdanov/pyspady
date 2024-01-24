@@ -131,7 +131,7 @@ def gen_rama(t: int, max_period: int):
 
 
 def tgsd(X, psi_d, phi_d, mask,
-         iterations: int, k: int, lambda_1: int, lambda_2: int, lambda_3: int, rho_1: int, rho_2: int):
+         iterations: int, k: int, lambda_1: int, lambda_2: int, lambda_3: int, rho_1: int, rho_2: int, type: str):
     def is_orthonormal(p_psi_or_phi):
         """
         Determines if graph or time series dictionary is orthonormal
@@ -281,7 +281,20 @@ def tgsd(X, psi_d, phi_d, mask,
     XPhiT = X.astype(np.complex128) @ phi_d.astype(np.complex128).conj().T
     PsiTX = psi_d.astype(np.longdouble).T @ X.astype(np.complex128)
 
-    plt.figure()
+    if mask.any():
+        if type == "row": # row-mask
+            n, m = X.shape
+            temp2 = np.ones((n, m))
+            temp2[(mask-1) % X[0], :] = 0
+            mask = np.argwhere(temp2 == 0)
+        elif type == "col" or type == "pred": # column or pred mask
+            n, m = X.shape
+            temp2 = np.ones((n, m))
+            temp2[:, (mask-1) // X[0]] = 0
+            mask = np.argwhere(temp2 == 0)
+        # else "rand" by default
+
+    #plt.figure()
 
     for i in range(1, 1 + iterations):
         P = (psi_d.astype(np.longdouble) @ Y.astype(np.complex128) @ W.astype(np.complex128) @ phi_d.astype(
@@ -381,6 +394,7 @@ def tgsd(X, psi_d, phi_d, mask,
     # plt.grid(True)
     # Display the final plot
     # plt.show()
+
     return Y, W
 
 @njit
@@ -641,13 +655,14 @@ def mdtm(is_syn, X, mask, phi_type, phi_d, P, lam, rho, K, epsilon, num_modes, c
 
 mat = load_matrix()
 ram = gen_rama(400, 10)
-mdtm(is_syn=True, X=None, mask=[], phi_type=None, phi_d=None, P=None, lam=None, rho=None, K=10, epsilon=1e-4,
-     num_modes=3)
+#mdtm(is_syn=True, X=None, mask=[], phi_type=None, phi_d=None, P=None, lam=None, rho=None, K=10, epsilon=1e-4,
+#     num_modes=3)
 
-# Psi_GFT = gen_gft(mat, False)
-# Psi_GFT = Psi_GFT[0]  # eigenvectors
-# Phi_DFT = gen_dft(200)
+Psi_GFT = gen_gft(mat, False)
+Psi_GFT = Psi_GFT[0]  # eigenvectors
+Phi_DFT = gen_dft(200)
 # non_orth_psi = Psi_GFT + 0.1 * np.outer(Psi_GFT[:, 0], Psi_GFT[:, 1])
 # non_orth_phi = Phi_DFT + 0.1 * np.outer(Phi_DFT[:, 0], Phi_DFT[:, 1])
 
-# tgsd(mat['X'], Psi_GFT, Phi_DFT, mat['mask'], 100, 7, .1, .1, 1, .01, .01)
+Y, W = tgsd(mat['X'], Psi_GFT, Phi_DFT, mat['mask'], iterations=100, K=7, lambda_1=.1, lambda_2=.1, lambda_3=1, rho_1=.01, rho_2=.01, type="rand")
+pred_matrix = Psi_GFT @ Y @ W @ Phi_DFT
