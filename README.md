@@ -42,7 +42,8 @@ Todo
    3. Different regualriers
     1. coloums sparsity 
 6. Dictionary selection
-   1. 1D Screening  
+   1. 1D Screening
+   2. Scaling to large graphs
 7. Prep datasets as use cases 
   
 -------------------------------------------------------------------------------------
