@@ -23,7 +23,8 @@ Todo
    1. data formats (mask as well)
     * matrix input
     * row,col, etc. value inputs 
-    * enter csv 
+    * enter csv
+    * pandas dataframe
    1. make defaul parameters
    2. config parameters 
    3. how to return missing values 
