@@ -40,7 +40,8 @@ Todo
    1. 2D-OMP
    2. Low Rank Dictionary Selection 
    3. Different regualriers
-    1. coloums sparsity 
+   4. coloums sparsity
+   5. Can we implement non-negataive on  a dictionary times co-efficents? 
 6. Dictionary selection
    1. 1D Screening
    2. Scaling to large graphs
