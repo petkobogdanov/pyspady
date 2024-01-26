@@ -1,6 +1,7 @@
 {
-    "x": "demo.mat",
-    "psi": "RAM",
-    "phi": "DF",
-    "mask": "RAND"
+    "x": "snakes_count_100.csv",
+    "psi": "GFT",
+    "phi": "DFT",
+    "mask_mode": "RAND",
+    "mask_percent": 40
 }
