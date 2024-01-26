@@ -1,3 +1,5 @@
+import json
+import random
 import cmath
 import itertools
 import math
@@ -660,7 +662,7 @@ def mdtm(is_syn, X, mask, phi_type, phi_d, P, lam, rho, K, epsilon, num_modes, c
 
     return None
 
-# Function based
+# Function based doesn't work
 def manual_run(file, X, psi_d, phi_d, mask):
     mat = load_matrix(file)
     
@@ -688,6 +690,60 @@ def manual_run(file, X, psi_d, phi_d, mask):
     Y, W = tgsd(mat['X'], psi_d, phi_d, mask, iterations=100, K=7, lambda_1=.1, lambda_2=.1, lambda_3=1, rho_1=.01, rho_2=.01, type="rand")
     pred_matrix = psi_d @ Y @ W @ phi_d
     return pred_matrix
+
 # Automatic
-def config_run (file):
-    #read config
+def config_run(config_path="config.json"):
+    try:
+        with open(config_path) as file:
+            config = json.load(file)
+    except:
+        raise Exception("Config not found")
+
+    if(not(str(config["psi"]).lower() == "gft" or str(config["phi"]).lower() == "gft")):
+        raise Exception("PSI or PHI use GFT")
+    
+    match str(config["psi"]).lower():
+        case "ram":
+            #phi_d = gen_rama(400, 10)
+            pass
+        case "gft":
+            #phi_d = gen_gft(mat, False)[0]  # eigenvectors
+            pass
+        case "dft":
+            pass
+            #phi_d = gen_dft(200)
+        case _:
+            raise Exception("PSI is invalid") 
+        
+    match str(config["phi"]).lower():
+        case "ram":
+            #phi_d = gen_rama(400, 10)
+            pass
+        case "gft":
+            #phi_d = gen_gft(mat, False)[0]  # eigenvectors
+            pass
+        case "dft":
+            pass
+            #phi_d = gen_dft(200)
+        case _:
+            raise Exception("PSI is invalid") 
+
+    try:
+        data = np.genfromtxt(config["x"], delimiter=',', skip_header=1).T.flatten()
+    except:
+        raise Exception("Invalid X path")
+    
+
+    percent = config["mask_percent"]
+    if(not isinstance(percent, int)):
+        raise Exception("Percent must be an int")
+    if(percent < 0 or percent > 100):
+        raise Exception("Invalid Percent")
+    
+    match str(config["mask_mode"]).lower():
+        case "lin":
+            mask_data = np.linspace(1, round(percent/100 * data.size), round(percent/100 * data.size))
+        case "rand":
+            mask_data = np.array(random.sample(range(1, data.size), round(percent/100 * data.size)))
+        case _:
+            raise Exception("Mode is Invalid") 
