@@ -17,8 +17,16 @@ from W_unittest import TestWConversion
 from numba import njit, prange, jit
 from numba.typed import List
 
+def load_matrix(file: str) -> dict:
+    """
+    Loads matrix from file in directory
+    Returns:
+        dict: dictionary with variable names as keys, and loaded matrices as values
+    """
+    return scipy.io.loadmat(file)
 
-def load_matrix() -> dict:
+
+def load_matrix_demo() -> dict:
     """
     Loads matrix from file in directory
     Returns:
@@ -652,17 +660,34 @@ def mdtm(is_syn, X, mask, phi_type, phi_d, P, lam, rho, K, epsilon, num_modes, c
 
     return None
 
+# Function based
+def manual_run(file, X, psi_d, phi_d, mask):
+    mat = load_matrix(file)
+    
+    match psi_d:
+        case "RAM":
+            psi_d = gen_rama(400, 10)
+        case "GFT":
+            psi_d = gen_gft(mat, False)[0]  # eigenvectors
+        case "DFT":
+            psi_d = gen_dft(200)
+        case _:
+            return
+    
+    match phi_d:
+        case "RAM":
+            phi_d = gen_rama(400, 10)
+        case "GFT":
+            phi_d = gen_gft(mat, False)[0]  # eigenvectors
+        case "DFT":
+            phi_d = gen_dft(200)
+        case _:
+            return
 
-mat = load_matrix()
-ram = gen_rama(400, 10)
-#mdtm(is_syn=True, X=None, mask=[], phi_type=None, phi_d=None, P=None, lam=None, rho=None, K=10, epsilon=1e-4,
-#     num_modes=3)
-
-Psi_GFT = gen_gft(mat, False)
-Psi_GFT = Psi_GFT[0]  # eigenvectors
-Phi_DFT = gen_dft(200)
-# non_orth_psi = Psi_GFT + 0.1 * np.outer(Psi_GFT[:, 0], Psi_GFT[:, 1])
-# non_orth_phi = Phi_DFT + 0.1 * np.outer(Phi_DFT[:, 0], Phi_DFT[:, 1])
-
-Y, W = tgsd(mat['X'], Psi_GFT, Phi_DFT, mat['mask'], iterations=100, K=7, lambda_1=.1, lambda_2=.1, lambda_3=1, rho_1=.01, rho_2=.01, type="rand")
-pred_matrix = Psi_GFT @ Y @ W @ Phi_DFT
+    # How do you use input x
+    Y, W = tgsd(mat['X'], psi_d, phi_d, mask, iterations=100, K=7, lambda_1=.1, lambda_2=.1, lambda_3=1, rho_1=.01, rho_2=.01, type="rand")
+    pred_matrix = psi_d @ Y @ W @ phi_d
+    return pred_matrix
+# Automatic
+def config_run (file):
+    #read config
