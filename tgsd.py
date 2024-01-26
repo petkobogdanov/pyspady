@@ -729,7 +729,7 @@ def config_run(config_path="config.json"):
             raise Exception("PSI is invalid") 
 
     try:
-        data = np.genfromtxt(config["x"], delimiter=',', skip_header=1).T.flatten()
+        data = np.genfromtxt(config["x"], delimiter=',', skip_header=1)
     except:
         raise Exception("Invalid X path")
     
