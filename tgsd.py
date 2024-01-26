@@ -747,9 +747,7 @@ def config_run(config_path="config.json"):
             mask_data = np.array(random.sample(range(1, data.size), round(percent/100 * data.size)))
         case _:
             raise Exception("Mode is Invalid")
-    
-    # Auto-deny override of saved files
-    # Implement allowing the user to override of save file
+
     save_flag = config["save"]
     if(not isinstance(save_flag, bool)):
         raise Exception("Invalid save flag")
@@ -759,10 +757,16 @@ def config_run(config_path="config.json"):
                 with open("save.match", "x"):
                     np.savetxt("save.match", mask_data)
             except:
-                raise Exception("save.match already exists. Please input a save_path")
+                if "override" in config and config["override"]:
+                    np.savetxt("save.match", mask_data)
+                else:
+                    raise Exception("save.match already exists. Please input a save_path")
         else:
             try:
                 with open(config["save_path"], "x"):
                     np.savetxt(config["save_path"], mask_data)
             except:
-                raise Exception(f"{config["save_path"]} already exists.")
+                if "override" in config and config["override"]:
+                    np.savetxt(config["save_path"], mask_data)
+                else:
+                    raise Exception(f"{config["save_path"]} already exists.")
