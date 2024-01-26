@@ -1,0 +1,6 @@
+{
+    x: "demo.mat",
+    psi: "RAM",
+    phi: "DF",
+    mask: "RAND"
+}
