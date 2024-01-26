@@ -3,5 +3,7 @@
     "psi": "GFT",
     "phi": "DFT",
     "mask_mode": "RAND",
-    "mask_percent": 40
+    "mask_percent": 40,
+    "save": true,
+    "save_path": "save.match"
 }
