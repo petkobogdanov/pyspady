@@ -1,4 +1,5 @@
 import json
+import os
 import random
 import cmath
 import itertools
@@ -696,11 +697,40 @@ def config_run(config_path="config.json"):
     try:
         with open(config_path) as file:
             config = json.load(file)
-    except:
-        raise Exception("Config not found")
+    except FileNotFoundError:
+        raise Exception(f"Config file '{config_path}' not found")
+    except json.JSONDecodeError:
+        raise Exception(f"Invalid JSON format in '{config_path}'")
+    except Exception as e:
+        raise Exception(f"Error loading config file: {e}")
 
-    if(not(str(config["psi"]).lower() == "gft" or str(config["phi"]).lower() == "gft")):
-        raise Exception("PSI or PHI use GFT")
+    if not ("psi" in config and "phi" in config):
+        raise Exception("Config must contain 'psi' and 'phi' keys")
+    if not ("x" in config):
+        raise Exception("Config must contain 'x' key")
+    if not ("mask_mode" in config):
+        raise Exception("Config must contain 'mask_mode' key")
+    if(not "mask_percent" in config):
+        raise Exception("Config must contain 'mask_percent' key")
+
+    psi = str(config["psi"]).lower()
+    phi = str(config["phi"]).lower()
+
+    if psi != "gft" and phi != "gft":
+        raise Exception("At least one of PSI or PHI must be 'gft'")
+    
+    save_flag, load_flag = False, False
+    if "save_flag" in config:
+        if not isinstance(config["save_flag"], bool):
+            raise Exception("Invalid 'save_flag', must be a boolean")
+        else:
+            save_flag = config["save_flag"]
+
+    if "load_flag" in config:
+        if not isinstance(config["load_flag"], bool):
+            raise Exception("Invalid 'load_flag', must be a boolean")
+        else:
+            load_flag = config["load_flag"]
     
     match str(config["psi"]).lower():
         case "ram":
@@ -713,7 +743,7 @@ def config_run(config_path="config.json"):
             pass
             #phi_d = gen_dft(200)
         case _:
-            raise Exception("PSI is invalid") 
+            raise Exception(f"PSI's dictionary, {config['psi']}, is invalid") 
         
     match str(config["phi"]).lower():
         case "ram":
@@ -726,47 +756,39 @@ def config_run(config_path="config.json"):
             pass
             #phi_d = gen_dft(200)
         case _:
-            raise Exception("PSI is invalid") 
+            raise Exception(f"PHI's dictionary, {config['phi']}, is invalid") 
 
     try:
         data = np.genfromtxt(config["x"], delimiter=',', skip_header=1)
     except:
-        raise Exception("Invalid X path")
+        raise Exception(f"Error loading data from '{config['x']}': {e}")
     
-
-    percent = config["mask_percent"]
-    if(not isinstance(percent, int)):
-        raise Exception("Percent must be an int")
-    if(percent < 0 or percent > 100):
-        raise Exception("Invalid Percent")
+    mask_percent = config["mask_percent"]
+    if not (isinstance(mask_percent, int) or (mask_percent < 0 or mask_percent > 100)):
+        raise Exception(f"{mask_percent} is invalid. Please enter a valid percent")
     
-    match str(config["mask_mode"]).lower():
-        case "lin":
-            mask_data = np.linspace(1, round(percent/100 * data.size), round(percent/100 * data.size))
-        case "rand":
-            mask_data = np.array(random.sample(range(1, data.size), round(percent/100 * data.size)))
-        case _:
-            raise Exception("Mode is Invalid")
-
-    save_flag = config["save"]
-    if(not isinstance(save_flag, bool)):
-        raise Exception("Invalid save flag")
+    if(load_flag):
+        load_path = config["load_path"] if "load_path" in config else "save.match"
+        try:
+            mask_data = np.loadtxt(load_path, dtype=float)
+        except FileNotFoundError:
+            raise Exception(f"Load path '{load_path}' does not exist")
+    else:
+        match str(config["mask_mode"]).lower():
+            case "lin":
+                mask_data = np.linspace(1, round(mask_percent/100 * data.size), round(mask_percent/100 * data.size))
+            case "rand":
+                mask_data = np.array(random.sample(range(1, data.size), round(mask_percent/100 * data.size)))
+            case _:
+                raise Exception(f"Invalid 'mask_mode': {config['mask_mode']}")
+    
     if(save_flag):
-        if(not hasattr(config, "save_path")):
-            try:
-                with open("save.match", "x"):
-                    np.savetxt("save.match", mask_data)
-            except:
-                if "override" in config and config["override"]:
-                    np.savetxt("save.match", mask_data)
-                else:
-                    raise Exception("save.match already exists. Please input a save_path")
-        else:
-            try:
-                with open(config["save_path"], "x"):
-                    np.savetxt(config["save_path"], mask_data)
-            except:
-                if "override" in config and config["override"]:
-                    np.savetxt(config["save_path"], mask_data)
-                else:
-                    raise Exception(f"{config["save_path"]} already exists.")
+        save_path = config["save_path"] if "save_path" in config else "save.match"
+        if(os.path.exists(save_path)):
+            if("override" in config and config["override"]):
+                try:
+                    np.savetxt(save_path, mask_data)
+                except Exception as e:
+                    raise Exception(f"Error saving data: {e}")    
+            else:
+                raise Exception(f"{save_path} already exists. Enable override to override the saved data.")
