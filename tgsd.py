@@ -704,14 +704,16 @@ def config_run(config_path="config.json"):
     except Exception as e:
         raise Exception(f"Error loading config file: {e}")
 
-    if not ("psi" in config and "phi" in config):
-        raise Exception("Config must contain 'psi' and 'phi' keys")
+    if not ("psi" in config):
+        raise Exception("Config must contain the 'psi' key")
+    if not ("phi" in config):
+        raise Exception("Config must contain the 'phi' key")
     if not ("x" in config):
-        raise Exception("Config must contain 'x' key")
+        raise Exception("Config must contain the 'x' key")
     if not ("mask_mode" in config):
-        raise Exception("Config must contain 'mask_mode' key")
+        raise Exception("Config must contain the 'mask_mode' key")
     if(not "mask_percent" in config):
-        raise Exception("Config must contain 'mask_percent' key")
+        raise Exception("Config must contain the 'mask_percent' key")
 
     psi = str(config["psi"]).lower()
     phi = str(config["phi"]).lower()
