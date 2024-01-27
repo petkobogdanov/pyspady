@@ -4,7 +4,9 @@
     "phi": "DFT",
     "mask_mode": "RAND",
     "mask_percent": 40,
-    "save": true,
-        "override": true,
-    "save_path": "save.match"
+    "save_flag": true,
+    "override": false,
+    "save_path": "save.match",
+    "load_flag": true,
+    "load_path": "save.match"
 }
