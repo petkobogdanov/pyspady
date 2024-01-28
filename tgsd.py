@@ -794,3 +794,8 @@ def config_run(config_path="config.json"):
                     raise Exception(f"Error saving data: {e}")    
             else:
                 raise Exception(f"{save_path} already exists. Enable override to override the saved data.")
+        else:
+            try:
+                np.savetxt(save_path, mask_data)
+            except Exception as e:
+                raise Exception(f"Error saving data: {e}")
