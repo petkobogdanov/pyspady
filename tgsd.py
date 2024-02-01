@@ -714,7 +714,7 @@ def config_run(config_path="config.json"):
         raise Exception("Config must contain the 'x' key")
     if not ("mask_mode" in config):
         raise Exception("Config must contain the 'mask_mode' key")
-    if(not "mask_percent" in config):
+    if not ("mask_percent" in config):
         raise Exception("Config must contain the 'mask_percent' key")
 
     psi = str(config["psi"]).lower()
@@ -739,6 +739,12 @@ def config_run(config_path="config.json"):
             raise Exception("Invalid 'load_flag', must be a boolean")
         else:
             load_flag = config["load_flag"]
+    
+    # Try to load the data
+    try:
+        data = np.genfromtxt(config["x"], delimiter=',', skip_header=1)
+    except:
+        raise Exception(f"Error loading data from '{config['x']}': {e}")
     
     match str(config["psi"]).lower():
         case "ram":
@@ -765,12 +771,6 @@ def config_run(config_path="config.json"):
             #phi_d = gen_dft(200)
         case _:
             raise Exception(f"PHI's dictionary, {config['phi']}, is invalid") 
-
-    # Try to load the data
-    try:
-        data = np.genfromtxt(config["x"], delimiter=',', skip_header=1)
-    except:
-        raise Exception(f"Error loading data from '{config['x']}': {e}")
     
     # Validate the mask percent
     mask_percent = config["mask_percent"]
@@ -817,4 +817,4 @@ def config_run(config_path="config.json"):
             try:
                 np.savetxt(save_path, mask_data)
             except Exception as e:
-                raise Exception(f"Error saving data: {e}")
+                raise Exception(f"Error saving data: {e}")  
