@@ -694,6 +694,7 @@ def manual_run(file, X, psi_d, phi_d, mask):
 
 # Automatic
 def config_run(config_path="config.json"):
+    # Try to open the config file
     try:
         with open(config_path) as file:
             config = json.load(file)
@@ -704,6 +705,7 @@ def config_run(config_path="config.json"):
     except Exception as e:
         raise Exception(f"Error loading config file: {e}")
 
+    # Validate the mandatory keys
     if not ("psi" in config):
         raise Exception("Config must contain the 'psi' key")
     if not ("phi" in config):
@@ -718,16 +720,20 @@ def config_run(config_path="config.json"):
     psi = str(config["psi"]).lower()
     phi = str(config["phi"]).lower()
 
+    # Validate the runnability of the instance 
     if psi != "gft" and phi != "gft":
         raise Exception("At least one of PSI or PHI must be 'gft'")
     
     save_flag, load_flag = False, False
+    
+    # Check if the save flag in the config is enabled and validate the input 
     if "save_flag" in config:
         if not isinstance(config["save_flag"], bool):
             raise Exception("Invalid 'save_flag', must be a boolean")
         else:
             save_flag = config["save_flag"]
 
+    # Check if the load flag in the config is enabled and validate the input
     if "load_flag" in config:
         if not isinstance(config["load_flag"], bool):
             raise Exception("Invalid 'load_flag', must be a boolean")
@@ -760,22 +766,29 @@ def config_run(config_path="config.json"):
         case _:
             raise Exception(f"PHI's dictionary, {config['phi']}, is invalid") 
 
+    # Try to load the data
     try:
         data = np.genfromtxt(config["x"], delimiter=',', skip_header=1)
     except:
         raise Exception(f"Error loading data from '{config['x']}': {e}")
     
+    # Validate the mask percent
     mask_percent = config["mask_percent"]
     if not (isinstance(mask_percent, int) or (mask_percent < 0 or mask_percent > 100)):
         raise Exception(f"{mask_percent} is invalid. Please enter a valid percent")
     
+    # If the load flag is enabled load from file
     if(load_flag):
+        # Retrieve the the correct path
         load_path = config["load_path"] if "load_path" in config else "save.match"
+        # Try to load the data
         try:
             mask_data = np.loadtxt(load_path, dtype=float)
         except FileNotFoundError:
             raise Exception(f"Load path '{load_path}' does not exist")
+    # If the load flag is not enabled check the mask mode
     else:
+        # Validate and read the mask mode
         match str(config["mask_mode"]).lower():
             case "lin":
                 mask_data = np.linspace(1, round(mask_percent/100 * data.size), round(mask_percent/100 * data.size))
@@ -784,16 +797,22 @@ def config_run(config_path="config.json"):
             case _:
                 raise Exception(f"Invalid 'mask_mode': {config['mask_mode']}")
     
+    # If the save flag is enabled save to file
     if(save_flag):
+        # Retrieve the the correct path 
         save_path = config["save_path"] if "save_path" in config else "save.match"
+        # Insure that data is not overwritten without user consent
         if(os.path.exists(save_path)):
+            # If user permission is given try to write the data
             if("override" in config and config["override"]):
                 try:
                     np.savetxt(save_path, mask_data)
                 except Exception as e:
-                    raise Exception(f"Error saving data: {e}")    
+                    raise Exception(f"Error saving data: {e}")   
+            # If user permission is not granted raise an exception 
             else:
                 raise Exception(f"{save_path} already exists. Enable override to override the saved data.")
+        # If the path does not already exist try to write the data
         else:
             try:
                 np.savetxt(save_path, mask_data)
