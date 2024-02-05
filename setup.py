@@ -5,7 +5,7 @@ with open("README.md", "r") as fh:
 setuptools.setup(
     name="Pyspady",
     version="0.0.1",
-    author="Michael Paglia",
+    author="Michael Paglia, Proshanto Dabnath, Michael Smith, Joseph Regan",
     author_email="michaelpagliadev@gmail.com",
     description="A Python sparse multi dictionary coding library",
     long_description=long_description,
@@ -13,13 +13,16 @@ setuptools.setup(
     url="https://github.com/petkobogdanov/pyspady",
     packages=setuptools.find_packages(),
     install_requires=[
-        'scipy'
-        'numpy'
+        'numpy',
+        'scipy',
+        'tensorly',
+        'matplotlib',
+        'pandas'
     ],
     classifiers=[
         "Programming Language :: Python :: 3",
         "License :: OSI Approved :: MIT License",
         "Operating System :: OS Independent",
     ],
-    python_requires='>=3.9',
+    python_requires='>=3.10',
 )
