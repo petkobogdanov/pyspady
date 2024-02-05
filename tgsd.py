@@ -4,18 +4,20 @@ import math
 from math import gcd, pi
 import numpy as np
 import scipy.io
-import tensorly as tl
-import sparse
-from tensorly.contrib.sparse import tensor as sp_tensor
+#import tensorly as tl
+#import sparse
+#from tensorly.contrib.sparse import tensor as sp_tensor
 import scipy.sparse as sp
 from scipy.fftpack import fft
 import time
-import matplotlib.pyplot as plt
+#import matplotlib.pyplot as plt
 from Y_unittest import TestYConversion
 from W_unittest import TestWConversion
 
-from numba import njit, prange, jit
-from numba.typed import List
+#from numba import njit, prange, jit
+#from numba.typed import List
+
+from scipy.sparse import spmatrix
 
 
 def load_matrix() -> dict:
@@ -46,6 +48,42 @@ def gen_gft(p_dict: dict, is_normalized: bool) -> list[np.ndarray]:
         list[np.ndarray]: list of numpy arrays in form [psi_gft, eigenvalues]
     """
     adj = p_dict['adj']  # given adj matrix
+    print(type(adj))
+    # user can supply graph in matrix form or binary form (R, C, V) or (R, C)
+    # print(np.linalg.matrix_rank(adj.toarray()))
+    # calculate sum along columns
+    D = np.diag(np.array(adj.sum(axis=0)).flatten())
+    # print(np.linalg.matrix_rank(D.toarray()))
+    L = D - adj  # Laplacian matrix
+    # normalize eigenvectors = D^-1/2*L*D^-1/2
+    if is_normalized:
+        D_sqrt_inv = sp.diags(1.0 / np.sqrt(np.array(D.sum(axis=0)).flatten()))
+        new_L = D_sqrt_inv @ L @ D_sqrt_inv
+        eigenvalues, psi_gft = np.linalg.eigh(new_L.toarray())
+        idx = np.argsort(np.abs(eigenvalues))
+        eigenvalues = eigenvalues[idx]
+        psi_gft = psi_gft[:, idx]
+        return [psi_gft, eigenvalues]
+    # print(np.linalg.matrix_rank(L.toarray()))
+    eigenvalues, psi_gft = np.linalg.eigh(L, UPLO='U')
+    # sort eigenvalues by ascending order such that constant vector is in first cell
+    idx = np.argsort(eigenvalues)
+    eigenvalues = eigenvalues[idx]
+    psi_gft = psi_gft[:, idx]
+    psi_gft = np.squeeze(np.asarray(psi_gft))
+    return [psi_gft, eigenvalues]
+
+def gen_gft_new(matrix: spmatrix, is_normalized: bool) -> list[np.ndarray]:
+    """
+    Constructs a PsiGFT from matlab dictionary (for now)
+    Args:
+        p_dict (dict): Given matlab dictionary
+        is_normalized (bool): Whether the matrix should be normalized
+    Returns:
+        list[np.ndarray]: list of numpy arrays in form [psi_gft, eigenvalues]
+    """
+    adj = matrix  # given adj matrix
+    # user can supply graph in matrix form or binary form (R, C, V) or (R, C)
     # print(np.linalg.matrix_rank(adj.toarray()))
     # calculate sum along columns
     D = np.diag(np.array(adj.sum(axis=0)).flatten())
@@ -397,7 +435,7 @@ def tgsd(X, psi_d, phi_d, mask,
 
     return Y, W
 
-@njit
+#@njit
 def unfold_fast(tensor, mode):
     I, J, K = tensor.shape
     if mode == 0:
@@ -425,7 +463,7 @@ def unfold_fast(tensor, mode):
                     unfolded[k, i * J + j] = tensor[i, j, k]
         return unfolded
 
-@njit(parallel=True, cache=True)
+#@njit(parallel=True, cache=True)
 def khatri_rao(matrices):
     # Check if matrices are 2D and have the same number of columns
     n_columns = matrices[0].shape[1]
@@ -653,16 +691,40 @@ def mdtm(is_syn, X, mask, phi_type, phi_d, P, lam, rho, K, epsilon, num_modes, c
     return None
 
 
-mat = load_matrix()
-ram = gen_rama(400, 10)
-#mdtm(is_syn=True, X=None, mask=[], phi_type=None, phi_d=None, P=None, lam=None, rho=None, K=10, epsilon=1e-4,
-#     num_modes=3)
+# mat = load_matrix()
+# ram = gen_rama(400, 10)
+# #mdtm(is_syn=True, X=None, mask=[], phi_type=None, phi_d=None, P=None, lam=None, rho=None, K=10, epsilon=1e-4,
+# #     num_modes=3)
+#
+# Psi_GFT = gen_gft(mat, False)
+# Psi_GFT = Psi_GFT[0]  # eigenvectors
+# Phi_DFT = gen_dft(200)
+# # non_orth_psi = Psi_GFT + 0.1 * np.outer(Psi_GFT[:, 0], Psi_GFT[:, 1])
+# # non_orth_phi = Phi_DFT + 0.1 * np.outer(Phi_DFT[:, 0], Phi_DFT[:, 1])
+#
+# Y, W = tgsd(mat['X'], Psi_GFT, Phi_DFT, mat['mask'], iterations=100, k=7, lambda_1=.1, lambda_2=.1, lambda_3=1, rho_1=.01, rho_2=.01, type="rand")
+# # pred_matrix = Psi_GFT @ Y @ W @ Phi_DFT
 
-Psi_GFT = gen_gft(mat, False)
+mat = load_matrix()
+
+# load in parameters from I/O file (loading in from MATLAB file for now but will be replaced by input from I/O file)
+X = mat['X']
+adj_mtx = mat['adj']
+mask = mat['mask']
+iterations = 100
+k = 7
+lambda_1 = 0.1
+lambda_2 = 0.1
+lambda_3 = 1
+rho_1 = 0.01
+rho_2 = 0.01
+
+# Set up dictionaries
+ram = gen_rama(400, 10)
+Psi_GFT = gen_gft_new(adj_mtx, False)
 Psi_GFT = Psi_GFT[0]  # eigenvectors
 Phi_DFT = gen_dft(200)
-# non_orth_psi = Psi_GFT + 0.1 * np.outer(Psi_GFT[:, 0], Psi_GFT[:, 1])
-# non_orth_phi = Phi_DFT + 0.1 * np.outer(Phi_DFT[:, 0], Phi_DFT[:, 1])
 
-Y, W = tgsd(mat['X'], Psi_GFT, Phi_DFT, mat['mask'], iterations=100, K=7, lambda_1=.1, lambda_2=.1, lambda_3=1, rho_1=.01, rho_2=.01, type="rand")
-pred_matrix = Psi_GFT @ Y @ W @ Phi_DFT
+# Perform tgsd
+Y, W = tgsd(X, Psi_GFT, Phi_DFT, mask, iterations=iterations, k=k, lambda_1=lambda_1, lambda_2=lambda_2, lambda_3=lambda_3, rho_1=rho_1, rho_2=rho_2, type="rand")
+# pred_matrix = Psi_GFT @ Y @ W @ Phi_DFT
