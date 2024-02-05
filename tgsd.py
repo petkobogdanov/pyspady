@@ -1,21 +1,27 @@
 import cmath
-import itertools
+# import itertools
 import math
 from math import gcd, pi
 import numpy as np
 import scipy.io
 import tensorly as tl
-import sparse
-from tensorly.contrib.sparse import tensor as sp_tensor
+# import sparse
+# from tensorly.contrib.sparse import tensor as sp_tensor
 import scipy.sparse as sp
 from scipy.fftpack import fft
+from scipy.stats import linregress
 import time
 import matplotlib.pyplot as plt
+from matplotlib.cm import ScalarMappable
+from matplotlib.colors import Normalize
+from matplotlib.gridspec import GridSpec
+
 from Y_unittest import TestYConversion
 from W_unittest import TestWConversion
 
-from numba import njit, prange, jit
-from numba.typed import List
+from collections import defaultdict
+# from numba import njit, prange, jit
+# from numba.typed import List
 
 
 def load_matrix() -> dict:
@@ -132,6 +138,25 @@ def gen_rama(t: int, max_period: int):
 
 def tgsd(X, psi_d, phi_d, mask,
          iterations: int, k: int, lambda_1: int, lambda_2: int, lambda_3: int, rho_1: int, rho_2: int, type: str):
+    """
+    Decomposes a temporal graph signal as a product of two fixed dictionaries and two corresponding sparse encoding matrices
+    Args:
+        X: Temporal graph signal input
+        psi_d: Some graph dictionary, Ψ
+        phi_d: Some time series dictionary,
+        mask:
+        iterations:
+        k:
+        lambda_1:
+        lambda_2:
+        lambda_3:
+        rho_1:
+        rho_2:
+        type:
+
+    Returns:
+
+    """
     def is_orthonormal(p_psi_or_phi):
         """
         Determines if graph or time series dictionary is orthonormal
@@ -282,19 +307,18 @@ def tgsd(X, psi_d, phi_d, mask,
     PsiTX = psi_d.astype(np.longdouble).T @ X.astype(np.complex128)
 
     if mask.any():
-        if type == "row": # row-mask
+        if type == "row":  # row-mask
             n, m = X.shape
             temp2 = np.ones((n, m))
-            temp2[(mask-1) % X[0], :] = 0
+            temp2[mask - 1 % X[0], :] = 0
             mask = np.argwhere(temp2 == 0)
-        elif type == "col" or type == "pred": # column or pred mask
+        elif type == "col" or type == "pred":  # column or pred mask
             n, m = X.shape
             temp2 = np.ones((n, m))
-            temp2[:, (mask-1) // X[0]] = 0
+            temp2[:, mask - 1] = 0
             mask = np.argwhere(temp2 == 0)
-        # else "rand" by default
 
-    #plt.figure()
+    # plt.figure()
 
     for i in range(1, 1 + iterations):
         P = (psi_d.astype(np.longdouble) @ Y.astype(np.complex128) @ W.astype(np.complex128) @ phi_d.astype(
@@ -365,10 +389,6 @@ def tgsd(X, psi_d, phi_d, mask,
 
         test_instance_w = TestWConversion()
         ans_w = test_instance_w.test_w_complex_conversion(i, W)
-        # plt.plot(i, ans_y, 'ro', markersize=5)
-        # plt.plot(i, ans_w, 'bo', markersize=5)
-        # plt.pause(0.1)  # Adjust the pause duration as needed
-        print("---")
         # Update V:
         # h= W-Gamma_2/rho_2;
         # V = sign(h).*max(abs(h)-lambda_2/rho_2,0);
@@ -397,59 +417,189 @@ def tgsd(X, psi_d, phi_d, mask,
 
     return Y, W
 
-@njit
-def unfold_fast(tensor, mode):
-    I, J, K = tensor.shape
-    if mode == 0:
-        # Mode-0 unfolding (I, J * K)
-        unfolded = np.empty((I, J * K))
-        for i in range(I):
-            for j in range(J):
-                for k in range(K):
-                    unfolded[i, j * K + k] = tensor[i, j, k]
-        return unfolded
-    elif mode == 1:
-        # Mode-1 unfolding (J, I * K)
-        unfolded = np.empty((J, I * K))
-        for j in range(J):
-            for i in range(I):
-                for k in range(K):
-                    unfolded[j, i * K + k] = tensor[i, j, k]
-        return unfolded
-    elif mode == 2:
-        # Mode-2 unfolding (K, I * J)
-        unfolded = np.empty((K, I * J))
-        for k in range(K):
-            for i in range(I):
-                for j in range(J):
-                    unfolded[k, i * J + j] = tensor[i, j, k]
-        return unfolded
 
-@njit(parallel=True, cache=True)
-def khatri_rao(matrices):
-    # Check if matrices are 2D and have the same number of columns
-    n_columns = matrices[0].shape[1]
-    # Compute the number of rows in the result
-    n_rows = 1
-    for m in matrices:
-        n_rows *= m.shape[0]
+def find_outlier(p_X, p_Psi, p_Y, p_W, p_Phi, p_percentage, p_count) -> None:
+    """
+    Plots outliers based on magnitude from the residual of X-(Ψ * p_Y * p_W * p_Φ).
+    Args:
+        p_X: Original temporal signal input
+        p_Psi: Graph dictionary Ψ
+        p_Y: Encoding matrix to reconstruct p_X
+        p_W: Encoding matrix to reconstruct p_X
+        p_Phi: Time series p_Φ
+        p_percentage: Top percentile of outliers that the user wishes to plot
+        p_count: Number of subplots to display, one for each outlier in p_count. Maximum count of 10.
 
-    # Initialize the result matrix
-    result = np.ones((n_rows, n_columns))
+    """
+    res = p_X - (p_Psi @ p_Y @ p_W @ p_Phi)
 
-    for col in prange(n_columns):
-        # For each column, compute the Kronecker product
-        for i in prange(matrices[0].shape[0]):
-            for j in prange(matrices[1].shape[0]):
-                # The row index in the result is computed based on the row indices in each matrix
-                result_row_index = i * matrices[1].shape[0] + j
-                # Compute the product for the current column
-                result[result_row_index, col] = matrices[0][i, col] * matrices[1][j, col]
+    flatten_residual = res.flatten()
+    sorted_values = np.argsort(np.abs(flatten_residual))[::-1]
 
-    return result
+    num_outliers_percentage = int(len(flatten_residual) * p_percentage / 100)
+    outlier_indices_percentage = sorted_values[:num_outliers_percentage]
+    row_indices_percentage, col_indices_percentage = np.unravel_index(outlier_indices_percentage, p_X.shape)
 
-def mdtm(is_syn, X, mask, phi_type, phi_d, P, lam, rho, K, epsilon, num_modes, count_nnz=None, num_iters_check=None,
-         mask_complex=None):
+    # Determine the indices of the top fixed number of outliers
+    num_outliers_for_subplots = min(p_count, 10)
+    outlier_indices_fixed = sorted_values[:num_outliers_for_subplots]
+    row_indices_fixed, col_indices_fixed = np.unravel_index(outlier_indices_fixed, p_X.shape)
+
+    X_magnitude = np.abs(p_X)
+
+    # Plotting
+    fig = plt.figure(figsize=(15, 3 * num_outliers_for_subplots))
+    gs = GridSpec(1, 2, width_ratios=[1, 2])
+
+    # Subplot 1: Original Data with Percentage-Based Outliers
+    ax_matrix = fig.add_subplot(gs[0])
+    ax_matrix.imshow(X_magnitude, cmap='gray')
+    ax_matrix.scatter(col_indices_percentage, row_indices_percentage, color='red', s=50,
+                      label=f'Top {p_percentage}% Outliers')
+    ax_matrix.set_xlabel('Column Index')
+    ax_matrix.set_ylabel('Row Index')
+    ax_matrix.set_title('Original Data X with Top % Outliers')
+
+    outliers_by_series = defaultdict(list)
+    for row_idx, col_idx in zip(row_indices_fixed, col_indices_fixed):
+        Phi_row_idx = row_idx % p_Phi.shape[0]
+        outliers_by_series[Phi_row_idx].append((row_idx, col_idx))
+
+    right_side_gs = GridSpec(min(len(outlier_indices_fixed), 10), 1)
+    right_side_gs.update(left=0.55, right=0.98)
+
+    time_points = np.arange(p_Phi.shape[1])
+    for i, (phi_row_idx, indices) in enumerate(outliers_by_series.items()):
+        ax_ts = fig.add_subplot(right_side_gs[i])
+        time_series = p_Phi[phi_row_idx, :]
+
+        for row_idx, col_idx in indices:
+            start = max(col_idx - num_outliers_for_subplots, 0)
+            end = min(col_idx + num_outliers_for_subplots + 1, len(time_series))
+
+            ax_ts.plot(time_points[start:end], time_series[start:end], label='Local Neighborhood' if i == 0 else "")
+            ax_ts.scatter(time_points[col_idx], time_series[col_idx], color='red', zorder=5,
+                          label='Outlier' if i == 0 else "")
+            ax_ts.annotate(f'({row_idx}, {col_idx})',
+                           (time_points[col_idx], time_series[col_idx]),
+                           textcoords="axes fraction",
+                           xytext=(0.95, 0.05),
+                           ha='right',
+                           va='bottom',
+                           fontweight='bold',
+                           bbox=dict(facecolor='white', alpha=0.5),
+                           fontsize=8)
+
+        y_min, y_max = time_series[start:end].min(), time_series[start:end].max()
+        ax_ts.set_ylim(y_min, y_max)
+
+        if i < num_outliers_for_subplots - 1:
+            ax_ts.tick_params(labelbottom=False)
+        else:
+            ax_ts.set_xlabel('Time Index')
+        ax_ts.grid(True)
+
+    plt.subplots_adjust(bottom=0.1)
+    plt.show()
+
+def find_row_outlier(p_X, p_Psi, p_Y, p_W, p_Phi, p_count):
+    """
+    Plots row outliers based on average magnitude from the residual of X-(Ψ * p_Y * p_W * p_Φ).
+    Args:
+        p_X: Original temporal signal input
+        p_Psi: Graph dictionary Ψ
+        p_Y: Encoding matrix to reconstruct p_X
+        p_W: Encoding matrix to reconstruct p_X
+        p_Phi: Time series p_Φ
+        p_count: Number of subplots to display, one for each row outlier in p_count. Maximum count of 10.
+    """
+    res = p_X - (p_Psi @ p_Y @ p_W @ p_Phi)
+    row_avg = np.abs(res).mean(axis=1)
+
+    sorted_rows = np.argsort(row_avg)[::-1]
+    p_count = min(p_count, 10)
+    outlier_rows = sorted_rows[:p_count]
+
+    num_plots = len(outlier_rows)
+    fig, axs = plt.subplots(num_plots, 1, figsize=(15, 3 * num_plots), constrained_layout=True)
+
+    if num_plots == 1:
+        axs = [axs]  # Make axs iterable for a single subplot
+
+    for i, row_idx in enumerate(outlier_rows):
+        avg_value = np.mean(p_X[row_idx, :])  # Average value for the outlier row in X
+        time_series = p_Phi[row_idx % p_Phi.shape[0], :]  # Corresponding time series in Phi
+        differences = np.abs(time_series - avg_value)
+        # Find the index of the minimum difference
+        closest_index = np.argmin(differences)
+
+        axs[i].plot(time_series, color='blue')
+        # Highlight the point closest to the average value
+        axs[i].scatter(closest_index, time_series[closest_index], color='red', zorder=5)
+
+        axs[i].annotate(f'Row {row_idx}', xy=(0.0, 0.95), xycoords='axes fraction',
+                        ha='left', va='top',
+                        fontweight='bold', fontsize=8, bbox=dict(boxstyle="round,pad=0.3", edgecolor='red', facecolor='white', alpha=0.5))
+
+        y_min, y_max = time_series.min(), time_series.max()
+        axs[i].set_ylim(y_min, y_max)
+
+        if i < num_plots - 1:
+            axs[i].tick_params(labelbottom=False)
+        else:
+            axs[i].set_xlabel('Time Index')
+        axs[i].grid(True)
+
+    plt.show()
+
+def find_col_outlier(p_X, p_Psi, p_Y, p_W, p_Phi, p_count):
+    """
+    Plots column outliers based on average magnitude from the residual of X-(Ψ * p_Y * p_W * p_Φ).
+    Args:
+        p_X: Original temporal signal input
+        p_Psi: Graph dictionary Ψ
+        p_Y: Encoding matrix to reconstruct p_X
+        p_W: Encoding matrix to reconstruct p_X
+        p_Phi: Time series p_Φ
+        p_count: Number of subplots to display, one for each column outlier in p_count. Maximum count of 10.
+    """
+    res = p_X - (p_Psi @ p_Y @ p_W @ p_Phi)
+    col_avg = np.abs(res).mean(axis=0)
+
+    sorted_columns = np.argsort(col_avg)[::-1]
+    outlier_columns = sorted_columns[:p_count]
+
+    num_series_to_plot = min(p_Phi.shape[0], 10)  # Plot up to the first 10 time series
+    fig, axs = plt.subplots(num_series_to_plot, 1, figsize=(15, 3 * num_series_to_plot), constrained_layout=True)
+
+    if num_series_to_plot == 1:
+        axs = [axs]  # Make axs iterable for a single subplot
+
+    for i, col_idx in enumerate(outlier_columns):
+        # Extracting the vertical time series for the outlier column
+        vertical_series = p_Phi[:, col_idx]
+        axs[i].plot(vertical_series, color='blue')
+
+        # Highlighting the entire column as an outlier
+        axs[i].axvline(x=col_idx, color='red', linestyle='--', label=f'Outlier at {col_idx}')
+
+        axs[i].annotate(f'Column {col_idx}', xy=(0.0, 0.95), xycoords='axes fraction', ha='left', va='top',
+                        fontweight='bold', fontsize=8, bbox=dict(boxstyle="round,pad=0.3", edgecolor='red', facecolor='white', alpha=0.5))
+        axs[i].invert_yaxis()  # Invert y-axis to have the top of the plot as the start of the series
+        y_min, y_max = vertical_series.min(), vertical_series.max()
+        axs[i].set_ylim(y_min, y_max)
+
+        if i < num_series_to_plot - 1:
+            axs[i].tick_params(labelbottom=False)
+        else:
+            axs[i].set_xlabel('Time Index')
+        axs[i].grid(True)
+
+    plt.show()
+
+###################################################################################################
+def mdtm(is_syn: bool, X, mask, phi_type, phi_d, P, lam, rho, K, epsilon, num_modes, count_nnz=None,
+         num_iters_check=None):
     def gen_syn_X(p_syn):
         # Create a list of matrices from the cell array
         return tl.kruskal_to_tensor((np.ones(p_syn['Kgen'][0, 0]), [matrix for matrix in p_syn['PhiYg'][0]]))
@@ -462,26 +612,29 @@ def mdtm(is_syn, X, mask, phi_type, phi_d, P, lam, rho, K, epsilon, num_modes, c
     def mttkrp(p_D, p_PhiY, p_n):
         return tl.unfold(p_D, mode=p_n) @ tl.tenalg.khatri_rao([p_PhiY[i] for i in range(len(p_PhiY)) if i != p_n])
 
-    def updated_mttkrp(p_D, p_PhiY, p_n):
-        foo = [p_PhiY[i] for i in range(len(p_PhiY)) if i != n]
-        typed_foo = List()
-        for mat in foo:
-            typed_foo.append(np.ascontiguousarray(mat))
-        return unfold_fast @ khatri_rao(typed_foo)
-
+    # def updated_mttkrp(p_D, p_PhiY, p_n):
+    #     foo = [p_PhiY[i] for i in range(len(p_PhiY)) if i != n]
+    #     typed_foo = List()
+    #     for mat in foo:
+    #         typed_foo.append(np.ascontiguousarray(mat))
+    #     return unfold_fast @ khatri_rao(typed_foo)
+    def nd_index(index, shape):
+        indices = [0] * len(shape)
+        for i in range(len(shape) - 1, -1, -1):
+            stride = np.prod(shape[:i])
+            indices[i], index = divmod(index, stride)
+            indices[i] = int(indices[i])
+        return tuple(indices)
 
     if is_syn:
         s_data = load_syn_data()
-        X = gen_syn_X(s_data)
-        lam, rho = gen_syn_lambda_rho(s_data)
-        phi_type = ["ortho_dic", "ortho_dic", "not_ortho_dic"]
-        phi_d = s_data['Phi']
-        P = s_data['P']
+        X = gen_syn_X(s_data)  # numpy array of x * y * z
+        lam, rho = gen_syn_lambda_rho(s_data)  # list of size n
+        phi_type = ["not_ortho_dic", "not_ortho_dic", "not_ortho_dic"]
+        phi_d = s_data['Phi']  # list of numpy arrays in form (1, n) where each atom corresponds to a dictionary.
+        # first coordinate of each dictionary = shape of X
+        P = s_data['P']  # Y values of shape of X
 
-    #for i in range(1):
-    #    phi_d[0, i] = np.array([])
-    #    phi_type[i] = "no_dic"
-    #    P[0, i] = np.array([[X.shape[i]]])
     # this ignores the try statements at initialization in MDTM.m
     # cast to Double for mask indexing i.e. double_X = double(X)
     D = X
@@ -489,17 +642,12 @@ def mdtm(is_syn, X, mask, phi_type, phi_d, P, lam, rho, K, epsilon, num_modes, c
     dimensions = X.shape
     count_nnz = 0 if not count_nnz else count_nnz
     num_iters_check = 10 if not num_iters_check else num_iters_check
-    set_difference = None if not mask_complex else set(
-        range(1, dimensions[0] * dimensions[1] * dimensions[2] + 1)) - set(mask)
-    mask_complex = 1 if not mask_complex else mask_complex
-    if mask and mask_complex == 1:
+    # set_difference = set(range(1, dimensions[0] * dimensions[1] * dimensions[2] + 1)) - set(mask)
+    mask_complex = 1
+
+    if len(mask) > 0:
         double_X = X.astype(np.longdouble)
-    else:
-        mask_i, mask_j, mask_t = np.unravel_index(np.array(mask, dtype=np.intp), dimensions)
-        # mask_tensor = sptensor([mask_i', mask_j', mask_t'], 1);
-        # stack indices and create coordinate list sparse tensor, convert to tensor format
-        mask_tensor = sp_tensor(sparse.COO(np.vstack((mask_i, mask_j, mask_t)), np.ones_like(mask_i), shape=dimensions),
-                                dtype='float')
+
     np.random.seed(6)
 
     PhiPhiEV, PhiPhiLAM = [None] * num_modes, [None] * num_modes
@@ -519,7 +667,7 @@ def mdtm(is_syn, X, mask, phi_type, phi_d, P, lam, rho, K, epsilon, num_modes, c
 
     MAX_ITERS = 500
     # 1:num_modes, @(x) isequal(sort(x), 1:num_modes)
-    dimorder_check = lambda x: sorted(x) == list(range(1, num_modes + 1))
+    # dimorder_check = lambda x: sorted(x) == list(range(1, num_modes + 1))
     dimorder = np.arange(1, num_modes + 1)
     gamma = [None] * num_modes
 
@@ -537,7 +685,6 @@ def mdtm(is_syn, X, mask, phi_type, phi_d, P, lam, rho, K, epsilon, num_modes, c
     PhiY = PhiYInit
     YPhi_Inner = YPhiInitInner
     Z = Y
-    fit = 0
     recon_t = tl.kruskal_to_tensor((normalize_scaling, [matrix for matrix in PhiY]))
     normX = tl.norm(tl.tensor(X), order=2)
     objs = np.zeros((MAX_ITERS, num_modes))
@@ -599,27 +746,23 @@ def mdtm(is_syn, X, mask, phi_type, phi_d, P, lam, rho, K, epsilon, num_modes, c
                     nnz = nnz + np.count_nonzero(Z[m])
                 objs[i - 1, 2] = nnz
 
-        if mask:
-            if mask_complex == 1:
-                # set D to reconstructed values and cast to double for mask indexing
-                recon_t = tl.kruskal_to_tensor((normalize_scaling, [matrix for matrix in PhiY]))
-                D = recon_t
-                missing_mask, observed_mask = np.zeros(double_X.shape), np.ones(double_X.shape)
-                missing_mask[(mask % (double_X.shape[0] * double_X.shape[1])) // double_X.shape[1],
-                             (mask % (double_X.shape[0] * double_X.shape[1])) % double_X.shape[1],
-                             mask // (double_X.shape[0] * double_X.shape[1])] = 1
+        if len(mask) > 0:
+            mask = np.array(mask)
+            # set D to reconstructed values and cast to double for mask indexing
+            recon_t = tl.kruskal_to_tensor(
+                (normalize_scaling.reshape((normalize_scaling.shape[1],)), [matrix for matrix in PhiY]))
+            D = recon_t
 
-                # d = (recon_t(:) + lambda * X(:)) * inv(1 + lambda)
-                # D(setDifference) = d
-                D = ((observed_mask - missing_mask) * (recon_t + lam[0] @ double_X)) / 1 + lam[0]
-            else:  # watch out for this
-                D = X
-                recon_t = tl.kruskal_to_tensor((normalize_scaling, [matrix for matrix in PhiY]))
-                # D([mask_i', mask_j', mask_t']) = mask(ktensor(normalize_scaling, PhiY), mask_tensor)
-                # recover values from K tensor
-                D[mask_i, mask_j, mask_t] = np.min(1, 1.01 ** i * 0.01) * \
-                                            sparse.COO.from_numpy(tl.kruskal_to_tensor(
-                                                (normalize_scaling, [matrix for matrix in PhiY]))) @ mask_tensor
+            missing_mask, observed_mask = np.zeros(double_X.shape), np.ones(double_X.shape)
+
+            for idx in mask:
+                nd_idx = nd_index(idx, double_X.shape)  # Convert index to correct tuple
+                missing_mask[nd_idx] = 1
+
+            # d = (recon_t(:) + lambda * X(:)) * inv(1 + lambda)
+            # D(setDifference) = d
+
+            D = ((observed_mask - missing_mask) * (recon_t + lam[0] * double_X)) / 1 + lam[0]
         else:
             D = X
 
@@ -631,7 +774,7 @@ def mdtm(is_syn, X, mask, phi_type, phi_d, P, lam, rho, K, epsilon, num_modes, c
             for n in range(len(dimorder)):
                 sparsity_constraint = sparsity_constraint + lam[n] * np.sum(np.abs(Y[n]))
 
-            if not mask or mask_complex == 1:
+            if len(mask) == 0 or mask_complex == 1:
                 recon_t = tl.kruskal_to_tensor((np.squeeze(normalize_scaling), [matrix for matrix in PhiY]))
 
             recon_error = tl.sqrt((normX ** 2) + (tl.norm(recon_t, order=2) ** 2) - 2 * tl.tenalg.inner(X, recon_t))
@@ -650,12 +793,39 @@ def mdtm(is_syn, X, mask, phi_type, phi_d, P, lam, rho, K, epsilon, num_modes, c
                 print(f"Algo has met fit change tolerance, avg time: {avg_time / i}")
                 break
 
-    return None
+    # [[S ⊡ Φ1Y1, Φ2Y2, Φ3Y3]
+    return X, recon_t
 
+def mdtm_find_outlier(p_X, p_recon, p_percentage, p_count) -> None:
+    """
+    Plots outliers based on magnitude from the residual of p_X-(p_recon).
+    Args:
+        p_X: Original temporal signal tensor
+        p_recon: Reconstruction of p_X from S ⊡ Φ1Y1, Φ2Y2, Φ3Y3
+        p_percentage: Top percentile of outliers that the user wishes to plot
+        p_count: Number of subplots to display, one for each outlier in p_count. Maximum count of 10.
+    """
+def mdtm_find_row_outlier(p_X, p_recon, p_count) -> None:
+    """
+    Plots row outliers based on average row magnitude from the residual of p_X-(p_recon).
+    Args:
+        p_X: Original temporal signal tensor
+        p_recon: Reconstruction of p_X from S ⊡ Φ1Y1, Φ2Y2, Φ3Y3
+        p_count: Number of subplots to display, one for each row outlier in p_count. Maximum count of 10.
+    """
+def mdtm_find_col_outlier(p_X, p_recon, p_count) -> None:
+    """
+    Plots column outliers based on average column magnitude from the residual of p_X-(p_recon).
+    Args:
+        p_X: Original temporal signal tensor
+        p_recon: Reconstruction of p_X from S ⊡ Φ1Y1, Φ2Y2, Φ3Y3
+        p_count: Number of subplots to display, one for each column outlier in p_count. Maximum count of 10.
+    """
+###################################################################################################
 
 mat = load_matrix()
-ram = gen_rama(400, 10)
-#mdtm(is_syn=True, X=None, mask=[], phi_type=None, phi_d=None, P=None, lam=None, rho=None, K=10, epsilon=1e-4,
+# ram = gen_rama(400, 10)
+# mdtm_X, recon_X = mdtm(is_syn=True, X=None, mask=[10, 8, 4, 3, 1, 2], phi_type=None, phi_d=None, P=None, lam=None, rho=None, K=10, epsilon=1e-4,
 #     num_modes=3)
 
 Psi_GFT = gen_gft(mat, False)
@@ -664,5 +834,11 @@ Phi_DFT = gen_dft(200)
 # non_orth_psi = Psi_GFT + 0.1 * np.outer(Psi_GFT[:, 0], Psi_GFT[:, 1])
 # non_orth_phi = Phi_DFT + 0.1 * np.outer(Phi_DFT[:, 0], Phi_DFT[:, 1])
 
-Y, W = tgsd(mat['X'], Psi_GFT, Phi_DFT, mat['mask'], iterations=100, K=7, lambda_1=.1, lambda_2=.1, lambda_3=1, rho_1=.01, rho_2=.01, type="rand")
+Y, W = tgsd(mat['X'], Psi_GFT, Phi_DFT, mat['mask'], iterations=100, k=7, lambda_1=.1, lambda_2=.1, lambda_3=1,
+            rho_1=.01, rho_2=.01, type="rand")
+
 pred_matrix = Psi_GFT @ Y @ W @ Phi_DFT
+#find_outlier(mat['X'], Psi_GFT, Y, W, Phi_DFT, .1, 25)
+find_row_outlier(mat['X'], Psi_GFT, Y, W, Phi_DFT, 10)
+find_col_outlier(mat['X'], Psi_GFT, Y, W, Phi_DFT, 10)
+print(pred_matrix)
