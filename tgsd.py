@@ -934,4 +934,3 @@ def config_run(config_path="config.json"):
                 np.savetxt(save_path, mask_data)
             except Exception as e:
                 raise Exception(f"Error saving data: {e}")  
->>>>>>> 8e5f4f17bd030981e27c46db377a7b6aa45d2ed6
