@@ -1,0 +1,12 @@
+{
+    "x": "snakes_count_100.csv",
+    "psi": "GFT",
+    "phi": "DFT",
+    "mask_mode": "RAND",
+    "mask_percent": 40,
+    "save_flag": true,
+    "override": false,
+    "save_path": "save.match",
+    "load_flag": true,
+    "load_path": "save.match"
+}

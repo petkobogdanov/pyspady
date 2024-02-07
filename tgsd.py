@@ -1,3 +1,6 @@
+import json
+import os
+import random
 import cmath
 import itertools
 import math
@@ -58,8 +61,16 @@ for _, row in df.iterrows():
 
 print(dense_matrix)
 
+def load_matrix(file: str) -> dict:
+    """
+    Loads matrix from file in directory
+    Returns:
+        dict: dictionary with variable names as keys, and loaded matrices as values
+    """
+    return scipy.io.loadmat(file)
 
-def load_matrix() -> dict:
+
+def load_matrix_demo() -> dict:
     """
     Loads matrix from file in directory
     Returns:
@@ -729,7 +740,31 @@ def mdtm(is_syn, X, mask, phi_type, phi_d, P, lam, rho, K, epsilon, num_modes, c
 
     return None
 
+# Function based doesn't work
+def manual_run(file, X, psi_d, phi_d, mask):
+    mat = load_matrix(file)
+    
+    match psi_d:
+        case "RAM":
+            psi_d = gen_rama(400, 10)
+        case "GFT":
+            psi_d = gen_gft(mat, False)[0]  # eigenvectors
+        case "DFT":
+            psi_d = gen_dft(200)
+        case _:
+            return
+    
+    match phi_d:
+        case "RAM":
+            phi_d = gen_rama(400, 10)
+        case "GFT":
+            phi_d = gen_gft(mat, False)[0]  # eigenvectors
+        case "DFT":
+            phi_d = gen_dft(200)
+        case _:
+            return
 
+<<<<<<< HEAD
 # mat = load_matrix()
 # ram = gen_rama(400, 10)
 # #mdtm(is_syn=True, X=None, mask=[], phi_type=None, phi_d=None, P=None, lam=None, rho=None, K=10, epsilon=1e-4,
@@ -767,3 +802,136 @@ Phi_DFT = gen_dft(200)
 # Perform tgsd
 Y, W = tgsd(X, Psi_GFT, Phi_DFT, mask, iterations=iterations, k=k, lambda_1=lambda_1, lambda_2=lambda_2, lambda_3=lambda_3, rho_1=rho_1, rho_2=rho_2, type="rand")
 # pred_matrix = Psi_GFT @ Y @ W @ Phi_DFT
+=======
+    # How do you use input x
+    Y, W = tgsd(mat['X'], psi_d, phi_d, mask, iterations=100, K=7, lambda_1=.1, lambda_2=.1, lambda_3=1, rho_1=.01, rho_2=.01, type="rand")
+    pred_matrix = psi_d @ Y @ W @ phi_d
+    return pred_matrix
+
+# Automatic
+def config_run(config_path="config.json"):
+    # Try to open the config file
+    try:
+        with open(config_path) as file:
+            config = json.load(file)
+    except FileNotFoundError:
+        raise Exception(f"Config file '{config_path}' not found")
+    except json.JSONDecodeError:
+        raise Exception(f"Invalid JSON format in '{config_path}'")
+    except Exception as e:
+        raise Exception(f"Error loading config file: {e}")
+
+    # Validate the mandatory keys
+    if not ("psi" in config):
+        raise Exception("Config must contain the 'psi' key")
+    if not ("phi" in config):
+        raise Exception("Config must contain the 'phi' key")
+    if not ("x" in config):
+        raise Exception("Config must contain the 'x' key")
+    if not ("mask_mode" in config):
+        raise Exception("Config must contain the 'mask_mode' key")
+    if not ("mask_percent" in config):
+        raise Exception("Config must contain the 'mask_percent' key")
+
+    psi = str(config["psi"]).lower()
+    phi = str(config["phi"]).lower()
+
+    # Validate the runnability of the instance 
+    if psi != "gft" and phi != "gft":
+        raise Exception("At least one of PSI or PHI must be 'gft'")
+    
+    save_flag, load_flag = False, False
+    
+    # Check if the save flag in the config is enabled and validate the input 
+    if "save_flag" in config:
+        if not isinstance(config["save_flag"], bool):
+            raise Exception("Invalid 'save_flag', must be a boolean")
+        else:
+            save_flag = config["save_flag"]
+
+    # Check if the load flag in the config is enabled and validate the input
+    if "load_flag" in config:
+        if not isinstance(config["load_flag"], bool):
+            raise Exception("Invalid 'load_flag', must be a boolean")
+        else:
+            load_flag = config["load_flag"]
+    
+    # Try to load the data
+    try:
+        data = np.genfromtxt(config["x"], delimiter=',', skip_header=1)
+    except:
+        raise Exception(f"Error loading data from '{config['x']}': {e}")
+    
+    match str(config["psi"]).lower():
+        case "ram":
+            #phi_d = gen_rama(400, 10)
+            pass
+        case "gft":
+            #phi_d = gen_gft(mat, False)[0]  # eigenvectors
+            pass
+        case "dft":
+            pass
+            #phi_d = gen_dft(200)
+        case _:
+            raise Exception(f"PSI's dictionary, {config['psi']}, is invalid") 
+        
+    match str(config["phi"]).lower():
+        case "ram":
+            #phi_d = gen_rama(400, 10)
+            pass
+        case "gft":
+            #phi_d = gen_gft(mat, False)[0]  # eigenvectors
+            pass
+        case "dft":
+            pass
+            #phi_d = gen_dft(200)
+        case _:
+            raise Exception(f"PHI's dictionary, {config['phi']}, is invalid") 
+    
+    # Validate the mask percent
+    mask_percent = config["mask_percent"]
+    if not (isinstance(mask_percent, int) or (mask_percent < 0 or mask_percent > 100)):
+        raise Exception(f"{mask_percent} is invalid. Please enter a valid percent")
+    
+    # If the load flag is enabled load from file
+    if(load_flag):
+        # Retrieve the the correct path
+        load_path = config["load_path"] if "load_path" in config else "save.match"
+        # Try to load the data
+        try:
+            mask_data = np.loadtxt(load_path, dtype=float)
+        except FileNotFoundError:
+            raise Exception(f"Load path '{load_path}' does not exist")
+    # If the load flag is not enabled check the mask mode
+    else:
+        # Validate and read the mask mode
+        match str(config["mask_mode"]).lower():
+            case "lin":
+                mask_data = np.linspace(1, round(mask_percent/100 * data.size), round(mask_percent/100 * data.size))
+            case "rand":
+                mask_data = np.array(random.sample(range(1, data.size), round(mask_percent/100 * data.size)))
+            case _:
+                raise Exception(f"Invalid 'mask_mode': {config['mask_mode']}")
+    
+    # If the save flag is enabled save to file
+    if(save_flag):
+        # Retrieve the the correct path 
+        save_path = config["save_path"] if "save_path" in config else "save.match"
+        # Insure that data is not overwritten without user consent
+        if(os.path.exists(save_path)):
+            # If user permission is given try to write the data
+            if("override" in config and config["override"]):
+                try:
+                    np.savetxt(save_path, mask_data)
+                except Exception as e:
+                    raise Exception(f"Error saving data: {e}")   
+            # If user permission is not granted raise an exception 
+            else:
+                raise Exception(f"{save_path} already exists. Enable override to override the saved data.")
+        # If the path does not already exist try to write the data
+        else:
+            try:
+                np.savetxt(save_path, mask_data)
+            except Exception as e:
+                raise Exception(f"Error saving data: {e}")  
+>>>>>>> 8e5f4f17bd030981e27c46db377a7b6aa45d2ed6
