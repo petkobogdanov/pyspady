@@ -5,8 +5,8 @@ from math import gcd, pi
 import numpy as np
 import scipy.io
 import tensorly as tl
-# import sparse
-# from tensorly.contrib.sparse import tensor as sp_tensor
+import sparse
+from tensorly.contrib.sparse import tensor as sp_tensor
 import scipy.sparse as sp
 from scipy.fftpack import fft
 from scipy.stats import linregress
@@ -14,12 +14,19 @@ import time
 import matplotlib.pyplot as plt
 from matplotlib.cm import ScalarMappable
 from matplotlib.colors import Normalize
-from matplotlib.gridspec import GridSpec
+from matplotlib.gridspec import GridSpec, GridSpecFromSubplotSpec
+
 
 from Y_unittest import TestYConversion
 from W_unittest import TestWConversion
 
 from collections import defaultdict
+
+import json
+import pandas
+import random
+
+
 # from numba import njit, prange, jit
 # from numba.typed import List
 
@@ -157,6 +164,7 @@ def tgsd(X, psi_d, phi_d, mask,
     Returns:
 
     """
+
     def is_orthonormal(p_psi_or_phi):
         """
         Determines if graph or time series dictionary is orthonormal
@@ -431,11 +439,15 @@ def find_outlier(p_X, p_Psi, p_Y, p_W, p_Phi, p_percentage, p_count) -> None:
         p_count: Number of subplots to display, one for each outlier in p_count. Maximum count of 10.
 
     """
+    # Compute the residual and the reconstructed X
     res = p_X - (p_Psi @ p_Y @ p_W @ p_Phi)
+    reconstructed_X = p_Psi @ p_Y @ p_W @ p_Phi
 
+    # Used for indexing
     flatten_residual = res.flatten()
     sorted_values = np.argsort(np.abs(flatten_residual))[::-1]
 
+    # Find the percentage of how many outliers there will be based on input
     num_outliers_percentage = int(len(flatten_residual) * p_percentage / 100)
     outlier_indices_percentage = sorted_values[:num_outliers_percentage]
     row_indices_percentage, col_indices_percentage = np.unravel_index(outlier_indices_percentage, p_X.shape)
@@ -445,11 +457,14 @@ def find_outlier(p_X, p_Psi, p_Y, p_W, p_Phi, p_percentage, p_count) -> None:
     outlier_indices_fixed = sorted_values[:num_outliers_for_subplots]
     row_indices_fixed, col_indices_fixed = np.unravel_index(outlier_indices_fixed, p_X.shape)
 
+    # Use magnitude for X and reconstructed X
     X_magnitude = np.abs(p_X)
+    reconstructed_X = np.abs(reconstructed_X)
 
-    # Plotting
-    fig = plt.figure(figsize=(15, 3 * num_outliers_for_subplots))
-    gs = GridSpec(1, 2, width_ratios=[1, 2])
+    # Plotting!
+    fig = plt.figure(figsize=(18, 4 * num_outliers_for_subplots))
+    # 3 "grids"
+    gs = GridSpec(1, 3, figure=fig, width_ratios=[3, 1, 1])
 
     # Subplot 1: Original Data with Percentage-Based Outliers
     ax_matrix = fig.add_subplot(gs[0])
@@ -460,23 +475,32 @@ def find_outlier(p_X, p_Psi, p_Y, p_W, p_Phi, p_percentage, p_count) -> None:
     ax_matrix.set_ylabel('Row Index')
     ax_matrix.set_title('Original Data X with Top % Outliers')
 
+    # Subplot 2: Local Neighborhood of Outliers Corresponding to the Time Series
+    # Groups the outliers (row, col) by row index so that they can be plotted on the same subplot together
     outliers_by_series = defaultdict(list)
     for row_idx, col_idx in zip(row_indices_fixed, col_indices_fixed):
         Phi_row_idx = row_idx % p_Phi.shape[0]
         outliers_by_series[Phi_row_idx].append((row_idx, col_idx))
 
-    right_side_gs = GridSpec(min(len(outlier_indices_fixed), 10), 1)
-    right_side_gs.update(left=0.55, right=0.98)
+    # Left hand side will have the local neighborhood of the outliers with the time series
+    left_column_rhs = GridSpecFromSubplotSpec(min(len(outlier_indices_fixed), 10), 1, subplot_spec=gs[1])
+    # Right hand side will have the fit
+    right_column_rhs = GridSpecFromSubplotSpec(10, 1, subplot_spec=gs[2])  # Assuming 10 new subplots
 
     time_points = np.arange(p_Phi.shape[1])
     for i, (phi_row_idx, indices) in enumerate(outliers_by_series.items()):
-        ax_ts = fig.add_subplot(right_side_gs[i])
+        # Add vertical subplots down each column
+        ax_ts = fig.add_subplot(left_column_rhs[i])
+        ax_ts_right = fig.add_subplot(right_column_rhs[i])
+        # Fetches the time series at that particular index (by row)
         time_series = p_Phi[phi_row_idx, :]
 
         for row_idx, col_idx in indices:
+            # Finds the local neighborhood
             start = max(col_idx - num_outliers_for_subplots, 0)
             end = min(col_idx + num_outliers_for_subplots + 1, len(time_series))
 
+            # Plots the local neighborhood (time series) along with the corresponding X
             ax_ts.plot(time_points[start:end], time_series[start:end], label='Local Neighborhood' if i == 0 else "")
             ax_ts.scatter(time_points[col_idx], time_series[col_idx], color='red', zorder=5,
                           label='Outlier' if i == 0 else "")
@@ -490,16 +514,38 @@ def find_outlier(p_X, p_Psi, p_Y, p_W, p_Phi, p_percentage, p_count) -> None:
                            bbox=dict(facecolor='white', alpha=0.5),
                            fontsize=8)
 
+            # Subplot 3: Fit of the Outlier Corresponding to X in Local Neighborhood
+            # For the same neighborhood, plot X values against reconstructed values
+            ax_ts_right.plot(time_points[start:end], X_magnitude[row_idx, start:end], 'b-', label='Local Neighborhood of X' if i == 0 else "")
+            ax_ts_right.plot(time_points[start:end], reconstructed_X[row_idx, start:end], 'g--', label='Reconstructed Neighborhood of X' if i == 0 else "")
+            ax_ts_right.scatter(col_idx, X_magnitude[row_idx, col_idx], color='blue', zorder=5, label='Actual Outlier (X)' if i == 0 else "")
+            ax_ts_right.scatter(col_idx, reconstructed_X[row_idx, col_idx], color='green', zorder=5, label='Reconstructed Outlier (X)' if i == 0 else "")
+
+            # Sets the x-axis for each subplot
+            ax_ts.set_xlim(start, end)
+            ax_ts_right.set_xlim(start, end)
+
+            # Right hand side: legend, since no specific point is necessary but just the representation
+            if i == 0:
+                handles, labels = ax_ts_right.get_legend_handles_labels()
+                ax_ts_right.legend(handles, labels, loc='upper right', bbox_to_anchor=(2.15, 1.3), fontsize='small')
+
+        # Sets y-axis for each subplot
         y_min, y_max = time_series[start:end].min(), time_series[start:end].max()
         ax_ts.set_ylim(y_min, y_max)
+        y_min_right, y_max_right = np.min(X_magnitude), np.max(X_magnitude)
+        ax_ts_right.set_ylim(y_min_right, y_max_right)
 
-        if i < num_outliers_for_subplots - 1:
-            ax_ts.tick_params(labelbottom=False)
-        else:
+        # For the last (bottom) subplot only
+        if i == num_outliers_for_subplots - 1:
             ax_ts.set_xlabel('Time Index')
-        ax_ts.grid(True)
+            ax_ts_right.set_xlabel('Time Index')
 
-    plt.subplots_adjust(bottom=0.1)
+        ax_ts.grid(True)
+        ax_ts_right.grid(True)
+
+    # Adjust as needed for visualization
+    plt.subplots_adjust(hspace=0.5, bottom=0.1, right=0.9)
     plt.show()
 
 def find_row_outlier(p_X, p_Psi, p_Y, p_W, p_Phi, p_count):
@@ -513,44 +559,77 @@ def find_row_outlier(p_X, p_Psi, p_Y, p_W, p_Phi, p_count):
         p_Phi: Time series p_Φ
         p_count: Number of subplots to display, one for each row outlier in p_count. Maximum count of 10.
     """
+    # Calculate the residual and reconstruction of X
     res = p_X - (p_Psi @ p_Y @ p_W @ p_Phi)
+    reconstructed_X = (p_Psi @ p_Y @ p_W @ p_Phi)
+    magnitude_X = abs(p_X)
+    reconstructed_X = abs(reconstructed_X)
+
+    # Take the average of each row
     row_avg = np.abs(res).mean(axis=1)
 
+    # Determine the number of rows to plot based on user input and sort average value
     sorted_rows = np.argsort(row_avg)[::-1]
     p_count = min(p_count, 10)
     outlier_rows = sorted_rows[:p_count]
-
     num_plots = len(outlier_rows)
-    fig, axs = plt.subplots(num_plots, 1, figsize=(15, 3 * num_plots), constrained_layout=True)
 
-    if num_plots == 1:
-        axs = [axs]  # Make axs iterable for a single subplot
+    # Define grid
+    fig = plt.figure(figsize=(15, 3 * p_count))
+    gs = GridSpec(num_plots, 2)  # Define grid layout for the figure
 
+    # Iterate through each row index to build grid
     for i, row_idx in enumerate(outlier_rows):
+        # Subplot 1: Average Value of the Row Plotted Against the Time Series
+        ax = fig.add_subplot(gs[i, 0])
+
         avg_value = np.mean(p_X[row_idx, :])  # Average value for the outlier row in X
         time_series = p_Phi[row_idx % p_Phi.shape[0], :]  # Corresponding time series in Phi
         differences = np.abs(time_series - avg_value)
-        # Find the index of the minimum difference
-        closest_index = np.argmin(differences)
+        closest_index = np.argmin(differences) # Index of the minimum difference (in other words, the closest time point for this avg. value)
 
-        axs[i].plot(time_series, color='blue')
+        ax.plot(time_series, color='blue')
         # Highlight the point closest to the average value
-        axs[i].scatter(closest_index, time_series[closest_index], color='red', zorder=5)
+        ax.scatter(closest_index, time_series[closest_index], color='red', zorder=5)
 
-        axs[i].annotate(f'Row {row_idx}', xy=(0.0, 0.95), xycoords='axes fraction',
+        # Annotate the row index
+        ax.annotate(f'Row {row_idx}', xy=(0.0, 0.95), xycoords='axes fraction',
                         ha='left', va='top',
-                        fontweight='bold', fontsize=8, bbox=dict(boxstyle="round,pad=0.3", edgecolor='red', facecolor='white', alpha=0.5))
+                        fontweight='bold', fontsize=8,
+                        bbox=dict(boxstyle="round,pad=0.3", edgecolor='red', facecolor='white', alpha=0.5))
 
+        # Set y-axis
         y_min, y_max = time_series.min(), time_series.max()
-        axs[i].set_ylim(y_min, y_max)
+        ax.set_ylim(y_min, y_max)
 
-        if i < num_plots - 1:
-            axs[i].tick_params(labelbottom=False)
+        # Subplot 2: Plot the Row Values Against Their Reconstructed Values (Fit)
+        ax_compare = fig.add_subplot(gs[i, 1])
+        ax_compare.plot(magnitude_X[row_idx, :], 'b-', label='X')
+        ax_compare.plot(reconstructed_X[row_idx, :], 'g--', label='Reconstructed X')
+
+        # Set y-axis
+        ax_compare.set_ylim(np.min(magnitude_X), np.max(magnitude_X))
+
+        # Add legend to first subplot
+        if i == 0:
+            handles, labels = ax_compare.get_legend_handles_labels()
+            ax_compare.legend(handles, labels, loc='upper left', bbox_to_anchor=(1, 1.3), fontsize='small')
+
+        # Enable the xlabel only for bottom subplot
+        if i == num_plots - 1:
+            ax.set_xlabel('Time Index')
+            ax_compare.set_xlabel('Time Index')
         else:
-            axs[i].set_xlabel('Time Index')
-        axs[i].grid(True)
+            ax.tick_params(labelbottom=False)
+            ax_compare.tick_params(labelbottom=False)
 
+        ax.grid(True)
+        ax_compare.grid(True)
+
+    # Adjust as needed for visualization
+    plt.subplots_adjust(hspace=0.5, bottom=0.1, right=0.9)
     plt.show()
+
 
 def find_col_outlier(p_X, p_Psi, p_Y, p_W, p_Phi, p_count):
     """
@@ -563,61 +642,87 @@ def find_col_outlier(p_X, p_Psi, p_Y, p_W, p_Phi, p_count):
         p_Phi: Time series p_Φ
         p_count: Number of subplots to display, one for each column outlier in p_count. Maximum count of 10.
     """
+    # Calculate the residual and reconstruction of X
     res = p_X - (p_Psi @ p_Y @ p_W @ p_Phi)
-    col_avg = np.abs(res).mean(axis=0)
+    magnitude_X = abs(p_X)
+    reconstructed_X = p_Psi @ p_Y @ p_W @ p_Phi
+    reconstructed_X = abs(reconstructed_X)
 
+    # Take the average of each column
+    col_avg = np.abs(res).mean(axis=0)
     sorted_columns = np.argsort(col_avg)[::-1]
     outlier_columns = sorted_columns[:p_count]
 
+    # Determine number of time series to plot
     num_series_to_plot = min(p_Phi.shape[0], 10)  # Plot up to the first 10 time series
-    fig, axs = plt.subplots(num_series_to_plot, 1, figsize=(15, 3 * num_series_to_plot), constrained_layout=True)
+    fig = plt.figure(figsize=(15, 3 * p_count))
+    gs = GridSpec(num_series_to_plot, 2)  # Define grid layout for the figure
 
-    if num_series_to_plot == 1:
-        axs = [axs]  # Make axs iterable for a single subplot
-
+    # Iterate through each column outlier index
     for i, col_idx in enumerate(outlier_columns):
+        # Subplot 1: Average Value of the Column Plotted Against the Time Series
+        ax = fig.add_subplot(gs[i, 0])
         # Extracting the vertical time series for the outlier column
         vertical_series = p_Phi[:, col_idx]
-        axs[i].plot(vertical_series, color='blue')
+        ax.plot(vertical_series, color='blue')
 
         # Highlighting the entire column as an outlier
-        axs[i].axvline(x=col_idx, color='red', linestyle='--', label=f'Outlier at {col_idx}')
+        ax.axvline(x=col_idx, color='red', linestyle='--', label=f'Outlier at {col_idx}')
 
-        axs[i].annotate(f'Column {col_idx}', xy=(0.0, 0.95), xycoords='axes fraction', ha='left', va='top',
-                        fontweight='bold', fontsize=8, bbox=dict(boxstyle="round,pad=0.3", edgecolor='red', facecolor='white', alpha=0.5))
-        axs[i].invert_yaxis()  # Invert y-axis to have the top of the plot as the start of the series
+        # Plot the column index
+        ax.annotate(f'Column {col_idx}', xy=(0.0, 0.95), xycoords='axes fraction', ha='left', va='top',
+                        fontweight='bold', fontsize=8,
+                        bbox=dict(boxstyle="round,pad=0.3", edgecolor='red', facecolor='white', alpha=0.5))
+        ax.invert_yaxis()  # Invert y-axis to have the top of the plot as the start of the series
+
+        # Set y-axis
         y_min, y_max = vertical_series.min(), vertical_series.max()
-        axs[i].set_ylim(y_min, y_max)
+        ax.set_ylim(y_min, y_max)
 
-        if i < num_series_to_plot - 1:
-            axs[i].tick_params(labelbottom=False)
+        # Subplot 2: Plot the Column Values Against Their Reconstructed Values (Fit)
+        ax_compare = fig.add_subplot(gs[i, 1])
+        ax_compare.plot(magnitude_X[:, col_idx], 'b-', label='X')
+        ax_compare.plot(reconstructed_X[:, col_idx], 'g--', label='Reconstructed X')
+
+        # Set y-axis
+        ax_compare.set_ylim(np.min(magnitude_X), np.max(magnitude_X))
+
+        # Add legend to first subplot
+        if i == 0:
+            handles, labels = ax_compare.get_legend_handles_labels()
+            ax_compare.legend(handles, labels, loc='upper left', bbox_to_anchor=(1, 1.3), fontsize='small')
+
+        # Enable the xlabel only for bottom subplot
+        if i == num_series_to_plot - 1:
+            ax.set_xlabel('Time Index')
+            ax_compare.set_xlabel('Time Index')
         else:
-            axs[i].set_xlabel('Time Index')
-        axs[i].grid(True)
+            ax.tick_params(labelbottom=False)
+            ax_compare.tick_params(labelbottom=False)
 
+        ax.grid(True)
+        ax_compare.grid(True)
+
+    # Adjust as needed for visualization
+    plt.subplots_adjust(hspace=0.5, bottom=0.1, right=0.9)
     plt.show()
 
+
+
 ###################################################################################################
-def mdtm(is_syn: bool, X, mask, phi_type, phi_d, P, lam, rho, K, epsilon, num_modes, count_nnz=None,
-         num_iters_check=None):
+def mdtm(is_syn: bool, X, adj, mask, count_nnz=10, num_iters_check=0, lam=0.000001, K=10, epsilon=1e-4):
     def gen_syn_X(p_syn):
         # Create a list of matrices from the cell array
         return tl.kruskal_to_tensor((np.ones(p_syn['Kgen'][0, 0]), [matrix for matrix in p_syn['PhiYg'][0]]))
 
     def gen_syn_lambda_rho(p_syn):
-        syn_lambda = [0.000001 for _ in p_syn['dimension'][0,]]
+        syn_lambda = [0.000001 for _ in p_syn['dimension'][0, ]]
         syn_rho = [val * 5 for val in syn_lambda]
         return syn_lambda, syn_rho
 
     def mttkrp(p_D, p_PhiY, p_n):
         return tl.unfold(p_D, mode=p_n) @ tl.tenalg.khatri_rao([p_PhiY[i] for i in range(len(p_PhiY)) if i != p_n])
 
-    # def updated_mttkrp(p_D, p_PhiY, p_n):
-    #     foo = [p_PhiY[i] for i in range(len(p_PhiY)) if i != n]
-    #     typed_foo = List()
-    #     for mat in foo:
-    #         typed_foo.append(np.ascontiguousarray(mat))
-    #     return unfold_fast @ khatri_rao(typed_foo)
     def nd_index(index, shape):
         indices = [0] * len(shape)
         for i in range(len(shape) - 1, -1, -1):
@@ -629,24 +734,69 @@ def mdtm(is_syn: bool, X, mask, phi_type, phi_d, P, lam, rho, K, epsilon, num_mo
     if is_syn:
         s_data = load_syn_data()
         X = gen_syn_X(s_data)  # numpy array of x * y * z
+        num_modes = X.ndim
         lam, rho = gen_syn_lambda_rho(s_data)  # list of size n
-        phi_type = ["not_ortho_dic", "not_ortho_dic", "not_ortho_dic"]
         phi_d = s_data['Phi']  # list of numpy arrays in form (1, n) where each atom corresponds to a dictionary.
+        phi_type = ['not_ortho_dic', 'ortho_dic', 'no_dic']
         # first coordinate of each dictionary = shape of X
         P = s_data['P']  # Y values of shape of X
+    else:
+        if len(X) == 0:
+            raise Exception
+        else:
+            num_modes = X.ndim
+            temp = lam
+            lam = [temp] * num_modes if temp is not None else 0.000001
+            rho = [val * 5 for val in lam]
+            phi_d = []
+            for mode in range(num_modes):
+                # Fill with dictionaries
+                #if mode == 0 or mode == 1:
+                    #nested_dictionary = gen_gft(p_dict, False) # Fix adjacency matrix here
+                #phi_d.append(nested_dictionary)
+                return
+
+            # Convert the list to a numpy object array of size (1, N)
+            phi_d = np.empty((1, num_modes), dtype=object)
+            for i in range(num_modes):
+                phi_d[0, i] = phi_d[i]
+
+            phi_type = [random.choice(['not_ortho_dic', 'ortho_dic', 'no_dic']) for _ in range(num_modes)]
+            P = []
+            for i in len(phi_d):
+                y_idx = phi_d[i].shape[1]
+                if y_idx > 250:
+                    dtype = np.uint16
+                elif y_idx > 100:
+                    dtype = np.uint8
+                else:
+                    dtype = np.uint8
+                    new_array = np.array([[y_idx]], dtype=dtype)
+                    P.append(new_array)
+            P = np.array([P], dtype=object)
+
+    # In the case of no dictionary, edit P manually
+    for _ in range(len(phi_type)):
+        num = X.shape[_]
+        if phi_type[_] == "no_dic":
+            P[0, _] = np.array([[num]], dtype=np.uint16)
 
     # this ignores the try statements at initialization in MDTM.m
     # cast to Double for mask indexing i.e. double_X = double(X)
     D = X
     normalize_scaling = np.ones(K)
     dimensions = X.shape
-    count_nnz = 0 if not count_nnz else count_nnz
-    num_iters_check = 10 if not num_iters_check else num_iters_check
-    # set_difference = set(range(1, dimensions[0] * dimensions[1] * dimensions[2] + 1)) - set(mask)
     mask_complex = 1
-
-    if len(mask) > 0:
+    set_difference = None if not mask_complex else set(range(1, dimensions[0] * dimensions[1] * dimensions[2] + 1)) - set(mask)
+    mask_complex = 1 if not mask_complex else mask_complex
+    if mask and mask_complex == 1:
         double_X = X.astype(np.longdouble)
+    else:
+        mask_i, mask_j, mask_t = np.unravel_index(np.array(mask, dtype=np.intp), dimensions)
+        # mask_tensor = sptensor([mask_i', mask_j', mask_t'], 1);
+        # stack indices and create coordinate list sparse tensor, convert to tensor format
+        mask_tensor = sp_tensor(sparse.COO(np.vstack((mask_i, mask_j, mask_t)), np.ones_like(mask_i), shape=dimensions),
+                                dtype='float')
 
     np.random.seed(6)
 
@@ -665,14 +815,16 @@ def mdtm(is_syn: bool, X, mask, phi_type, phi_d, P, lam, rho, K, epsilon, num_mo
             # diag(S(1:retained_rank, 1:retained_rank)).^2
             PhiPhiLAM[i] = (np.diag(S[:retained_rank]) ** 2).reshape(-1, 1)
 
+    # 1:num_modes, @(x) isequal(sort(x), 1:num_modes)
     MAX_ITERS = 500
     # 1:num_modes, @(x) isequal(sort(x), 1:num_modes)
-    # dimorder_check = lambda x: sorted(x) == list(range(1, num_modes + 1))
+    dimorder_check = lambda x: sorted(x) == list(range(1, num_modes + 1))
     dimorder = np.arange(1, num_modes + 1)
     gamma = [None] * num_modes
 
     YPhiInitInner = np.zeros((K, K, num_modes))
     Y_init, PhiYInit = [None] * num_modes, [None] * num_modes
+
     for n in range(len(dimorder)):
         Y_init[n] = np.random.rand(P[0, n][0, 0], K)
         PhiYInit[n] = (phi_d[0, n] @ Y_init[n]) if phi_type[n] in ["not_ortho_dic", "ortho_dic"] else Y_init[n]
@@ -685,6 +837,7 @@ def mdtm(is_syn: bool, X, mask, phi_type, phi_d, P, lam, rho, K, epsilon, num_mo
     PhiY = PhiYInit
     YPhi_Inner = YPhiInitInner
     Z = Y
+    fit = 0
     recon_t = tl.kruskal_to_tensor((normalize_scaling, [matrix for matrix in PhiY]))
     normX = tl.norm(tl.tensor(X), order=2)
     objs = np.zeros((MAX_ITERS, num_modes))
@@ -796,6 +949,33 @@ def mdtm(is_syn: bool, X, mask, phi_type, phi_d, P, lam, rho, K, epsilon, num_mo
     # [[S ⊡ Φ1Y1, Φ2Y2, Φ3Y3]
     return X, recon_t
 
+
+def mdtm_load_config():
+    with open('mdtm_config.json', 'r') as file:
+        config = json.load(file)
+
+    # Load X from a CSV file
+    X = pandas.read_csv(config['X']).values if config['X'] is not None else None
+
+    if X is not None and config['adj']:
+        # TODO
+        adj = config['adj']
+    if X is not None and config['mask_percentage_random']:
+        num_elements_to_mask = int(np.prod(X.shape) * (config['mask_percentage_random'] / 100.0))
+        mask = np.random.choice(np.prod(X.shape), size=num_elements_to_mask, replace=False)
+    else:
+        mask = None
+
+    # The rest of the configuration parameters
+    count_nnz: config['count_nnz']
+    num_iters_check: config['num_iters_check']
+    lam = config['lam']
+    K = config['K']
+    epsilon = config['epsilon']
+
+    return X, adj, mask, count_nnz, num_iters_check, lam, K, epsilon
+
+
 def mdtm_find_outlier(p_X, p_recon, p_percentage, p_count) -> None:
     """
     Plots outliers based on magnitude from the residual of p_X-(p_recon).
@@ -805,6 +985,8 @@ def mdtm_find_outlier(p_X, p_recon, p_percentage, p_count) -> None:
         p_percentage: Top percentile of outliers that the user wishes to plot
         p_count: Number of subplots to display, one for each outlier in p_count. Maximum count of 10.
     """
+    #TODO
+
 def mdtm_find_row_outlier(p_X, p_recon, p_count) -> None:
     """
     Plots row outliers based on average row magnitude from the residual of p_X-(p_recon).
@@ -813,6 +995,8 @@ def mdtm_find_row_outlier(p_X, p_recon, p_count) -> None:
         p_recon: Reconstruction of p_X from S ⊡ Φ1Y1, Φ2Y2, Φ3Y3
         p_count: Number of subplots to display, one for each row outlier in p_count. Maximum count of 10.
     """
+    #TODO
+
 def mdtm_find_col_outlier(p_X, p_recon, p_count) -> None:
     """
     Plots column outliers based on average column magnitude from the residual of p_X-(p_recon).
@@ -821,12 +1005,15 @@ def mdtm_find_col_outlier(p_X, p_recon, p_count) -> None:
         p_recon: Reconstruction of p_X from S ⊡ Φ1Y1, Φ2Y2, Φ3Y3
         p_count: Number of subplots to display, one for each column outlier in p_count. Maximum count of 10.
     """
+    #TODO
+
 ###################################################################################################
 
 mat = load_matrix()
 # ram = gen_rama(400, 10)
-# mdtm_X, recon_X = mdtm(is_syn=True, X=None, mask=[10, 8, 4, 3, 1, 2], phi_type=None, phi_d=None, P=None, lam=None, rho=None, K=10, epsilon=1e-4,
-#     num_modes=3)
+#mdtm_input_x, mdtm_input_adj, mdtm_input_mask, mdtm_input_count_nnz, mdtm_input_num_iters_check, mdtm_input_lam, mdtm_input_K, mdtm_input_epsilon = mdtm_load_config()
+#mdtm_X, recon_X = mdtm(is_syn=True, X=None, adj=None, mask=[], count_nnz=0, num_iters_check=10, lam=0.000001, K=10,
+#                       epsilon=1e-4)
 
 Psi_GFT = gen_gft(mat, False)
 Psi_GFT = Psi_GFT[0]  # eigenvectors
@@ -839,6 +1026,6 @@ Y, W = tgsd(mat['X'], Psi_GFT, Phi_DFT, mat['mask'], iterations=100, k=7, lambda
 
 pred_matrix = Psi_GFT @ Y @ W @ Phi_DFT
 #find_outlier(mat['X'], Psi_GFT, Y, W, Phi_DFT, .1, 25)
-find_row_outlier(mat['X'], Psi_GFT, Y, W, Phi_DFT, 10)
+#find_row_outlier(mat['X'], Psi_GFT, Y, W, Phi_DFT, 10)
 find_col_outlier(mat['X'], Psi_GFT, Y, W, Phi_DFT, 10)
 print(pred_matrix)
