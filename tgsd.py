@@ -19,6 +19,45 @@ from W_unittest import TestWConversion
 
 from scipy.sparse import spmatrix
 
+import pandas as pd
+import numpy as np
+import csv
+import random
+
+
+# max number of pairs defined
+num_pairs = 100
+
+# maximum row and column indices
+max_index = 20
+
+# Generate random coordinate pairs
+coordinates = [(random.randint(1, max_index), random.randint(1, max_index)) for _ in range(num_pairs)]
+
+# Write the coordinates to a CSV file
+with open('graph_data.csv', 'w', newline='') as csvfile:
+    writer = csv.writer(csvfile)
+    writer.writerow(['R', 'C'])  # Write header row
+    writer.writerows(coordinates)  # Write coordinate pairs
+
+
+# Read the CSV file into a pandas DataFrame
+df = pd.read_csv('graph_data.csv')
+#df_values = df.iloc[1:]
+
+# Shape is determined by max (should be set in config because the max shape may not necessarily be present)
+max_row = df['R'].max()
+max_col = df['C'].max()
+
+# empty dense matrix filled with zeros (can be converted to sparse matrix for operations)
+dense_matrix = np.zeros((max_row, max_col))
+
+# fill dense matrix
+for _, row in df.iterrows():
+    dense_matrix[row['R'] - 1, row['C'] - 1] = 1  # Subtract 1 to convert to zero-based indexing
+
+print(dense_matrix)
+
 
 def load_matrix() -> dict:
     """
