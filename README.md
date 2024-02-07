@@ -19,31 +19,39 @@ Testing
 Todo
 
 1. Some dictionaries
-2. Front end
+   
+3. Front end
    1. data formats (mask as well)
     * matrix input
     * row,col, etc. value inputs 
-    * enter csv 
+    * enter csv
+    * pandas dataframe
    1. make defaul parameters
    2. config parameters 
    3. how to return missing values 
   
-3. Auto config 
+4. Auto config 
    1. auto parameter selections 
    2. graph learning
    3. estimate time to complete 
-   4. return explanatory figs? 
-4. Different optimizers 
+   4. return explanatory figs?
+      
+5. Different optimizers 
    1. gradient based
-   2. OMP for differnt mods
-5. Other Models  
+   2. OMP for differnt mod
+      
+6. Other Models  
    1. 2D-OMP
    2. Low Rank Dictionary Selection 
    3. Different regualriers
-    1. coloums sparsity 
-6. Dictionary selection
-   1. 1D Screening  
-7. Prep datasets as use cases 
+   4. coloums sparsity
+   5. Can we implement non-negataive on  a dictionary times co-efficents?
+      
+7. Dictionary selection
+   1. 1D Screening
+   2. Scaling to large graphs
+      
+8. Prep datasets as use cases 
   
 -------------------------------------------------------------------------------------
 
