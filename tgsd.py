@@ -4,20 +4,36 @@ import math
 from math import gcd, pi
 import numpy as np
 import scipy.io
-import tensorly as tl
-import sparse
-from tensorly.contrib.sparse import tensor as sp_tensor
+#import tensorly as tl
+#import sparse
+#from tensorly.contrib.sparse import tensor as sp_tensor
 import scipy.sparse as sp
 from scipy.fftpack import fft
 import time
 import matplotlib.pyplot as plt
+import seaborn as sns
+import pandas as pd
+from mpl_toolkits.mplot3d import Axes3D
+
+
 from Y_unittest import TestYConversion
 from W_unittest import TestWConversion
 
 from numba import njit, prange, jit
 from numba.typed import List
 
+pinv_orig = np.linalg.pinv
 
+def pinv_new(arg):
+    return pinv_orig(arg.astype(np.complex128))
+
+np.linalg.pinv = pinv_new
+
+norm_orig = np.linalg.norm
+def norm_new(arg, **kwargs):
+    return norm_orig(arg.astype(np.complex128), **kwargs)
+
+np.linalg.norm = norm_new
 def load_matrix() -> dict:
     """
     Loads matrix from file in directory
@@ -252,6 +268,7 @@ def tgsd(X, psi_d, phi_d, mask,
         p_mask, missing_mask, observed_mask = p_mask - 1, np.zeros(p_X.shape), np.ones(p_X.shape)
         missing_mask[p_mask % p_X.shape[0], p_mask // p_X.shape[0]] = 1
         term_3 = np.linalg.norm((observed_mask - missing_mask) * (p_X - p_D), ord=2)
+        term_3 = term_3.astype(np.complex128)
         # obj_new = norm(D-Psi*Y*Sigma*W*Phi)+lambda_1*norm(Y,1)+lambda_2*norm(W,1)+lambda_3*term3;
         return np.linalg.norm(p_D - p_psi @ p_Y @ p_sigma @ p_W @ p_phi, ord=2) \
                + p_lambda_1 * np.linalg.norm(np.abs(p_Y), ord=1) + p_lambda_2 * np.linalg.norm(np.abs(p_W),
@@ -300,9 +317,11 @@ def tgsd(X, psi_d, phi_d, mask,
         P = (psi_d.astype(np.longdouble) @ Y.astype(np.complex128) @ W.astype(np.complex128) @ phi_d.astype(
             np.complex128))
         D = update_d(P, X, mask, lambda_3)
+        D =D.astype(np.complex128)
         #     B=Sigma*W*Phi;
         #     Y=(2*Psi'*D*B'+rho_1*Z+Gamma_1)*inv(2*(B*B')+rho_1*I_y+exp(-15));
         B = sigma.astype(np.longdouble) @ W.astype(np.complex128) @ phi_d.astype(np.complex128)
+        B = B.astype(np.complex128)
         if mask.any():
             # Both are orth OR Psi is orth, Phi is not orth
             if (is_orthonormal(phi_d) and is_orthonormal(psi_d)) or (
@@ -325,16 +344,18 @@ def tgsd(X, psi_d, phi_d, mask,
             elif (is_orthonormal(phi_d) and not is_orthonormal(psi_d)) or (
                     not is_orthonormal(phi_d) and not is_orthonormal(psi_d)):
                 Y = hard_update_y(sigma, W, D, psi_d, phi_d, lam_1, Q_1, gamma_1, rho_1)
-
-        test_instance = TestYConversion()
-        ans_y = test_instance.test_y_complex_conversion(i, Y)
+#--UnitTest for Y
+        # test_instance = TestYConversion()
+        # ans_y = test_instance.test_y_complex_conversion(i, Y)
         # Update Z:
         # h = Y-gamma_1 / rho_1
         # Z = sign(h).*max(abs(h)-lambda_1/rho_1, 0)
         h = (Y - (gamma_1.astype(np.complex128) / rho_1)).astype(np.complex128)
         Z = (np.sign(h) * np.maximum(np.abs(h) - (lambda_1 / rho_1), 0)).astype(np.complex128)
+        Z = Z.astype(np.complex128)
         # A = psi*Y*sigma
         A = psi_d.astype(np.longdouble) @ Y.astype(np.complex128) @ sigma.astype(np.longdouble)
+        A = A.astype(np.complex128)
         if mask.any():
             # Both are orthonormal OR Psi is orth, Phi is not
             if (is_orthonormal(phi_d) and is_orthonormal(psi_d)) or (
@@ -362,13 +383,13 @@ def tgsd(X, psi_d, phi_d, mask,
             elif not is_orthonormal(psi_d) and not is_orthonormal(phi_d):
                 W = hard_update_w(sigma, V, D, Y, psi_d.astype(np.longdouble), phi_d.astype(np.complex128), lam_4, Q_4,
                                   gamma_2, rho_2)
-
-        test_instance_w = TestWConversion()
-        ans_w = test_instance_w.test_w_complex_conversion(i, W)
-        # plt.plot(i, ans_y, 'ro', markersize=5)
-        # plt.plot(i, ans_w, 'bo', markersize=5)
-        # plt.pause(0.1)  # Adjust the pause duration as needed
-        print("---")
+## Unit Test for W
+        # test_instance_w = TestWConversion()
+        # ans_w = test_instance_w.test_w_complex_conversion(i, W)
+        # # plt.plot(i, ans_y, 'ro', markersize=5)
+        # # plt.plot(i, ans_w, 'bo', markersize=5)
+        # # plt.pause(0.1)  # Adjust the pause duration as needed
+        # print("---")
         # Update V:
         # h= W-Gamma_2/rho_2;
         # V = sign(h).*max(abs(h)-lambda_2/rho_2,0);
@@ -664,5 +685,55 @@ Phi_DFT = gen_dft(200)
 # non_orth_psi = Psi_GFT + 0.1 * np.outer(Psi_GFT[:, 0], Psi_GFT[:, 1])
 # non_orth_phi = Phi_DFT + 0.1 * np.outer(Phi_DFT[:, 0], Phi_DFT[:, 1])
 
-Y, W = tgsd(mat['X'], Psi_GFT, Phi_DFT, mat['mask'], iterations=100, K=7, lambda_1=.1, lambda_2=.1, lambda_3=1, rho_1=.01, rho_2=.01, type="rand")
+Y, W = tgsd(mat['X'], Psi_GFT, Phi_DFT, mat['mask'], iterations=100, k=7, lambda_1=.1, lambda_2=.1, lambda_3=1, rho_1=.01, rho_2=.01, type="rand")
+# Y_real = [ele.real for ele in Y]
+# Y_imag = [ele.imag for ele in Y]
+# W_real = [ele.real for ele in W]
+# W_imag = [ele.imag for ele in W]
+# plt.scatter(Y_real,Y_imag)
+# plt.scatter(W_real,W_imag)
+# plt.ylabel('Imaginary')
+# plt.xlabel('Real')
+# plt.show()
 pred_matrix = Psi_GFT @ Y @ W @ Phi_DFT
+
+PsiY = Psi_GFT @ Y
+
+PsiYdf = pd.DataFrame(PsiY)
+print(PsiYdf)
+print(PsiYdf.info())
+# print(PsiY)
+
+PsiY_real = [ele.real for ele in PsiY]
+
+PsiY_real_df = pd.DataFrame(PsiY_real)
+PsiY_real_df.to_csv('PsiYRealdata.csv', sep=',', index=False)
+# print("PsiY\n",PsiY_real_df)
+
+
+#
+# X_star_real = [ele.real for ele in pred_matrix]
+#
+#
+#
+#
+# plt.show()
+# pred_matrix_pandas = pd.DataFrame(X_star_real)
+# print(pred_matrix_pandas)
+# sns.lmplot(pred_matrix_pandas)
+# sns.heatmap(pred_matrix_pandas)
+# plt.show()
+# # Set up grid and test data
+# nx, ny = 175, 200
+# x = range(nx)
+# y = range(ny)
+#
+# data = X_star_real
+#
+# hf = plt.figure()
+# ha = hf.add_subplot(111, projection='3d')
+#
+# X, Y = np.meshgrid(x, y)  # `plot_surface` expects `x` and `y` data to be 2D
+# ha.plot_surface(X.T, Y.T, PsiY_real_df)
+# plt.show()
+
