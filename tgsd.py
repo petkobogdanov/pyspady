@@ -21,15 +21,48 @@ from Y_unittest import TestYConversion
 from W_unittest import TestWConversion
 
 from collections import defaultdict
+from scipy.sparse import spmatrix
 
 import json
 import pandas
 import random
+import csv
 
 
 # from numba import njit, prange, jit
 # from numba.typed import List
+# max number of pairs defined
+num_pairs = 100
 
+# maximum row and column indices
+max_index = 20
+
+# Generate random coordinate pairs
+coordinates = [(random.randint(1, max_index), random.randint(1, max_index)) for _ in range(num_pairs)]
+
+# Write the coordinates to a CSV file
+with open('graph_data.csv', 'w', newline='') as csvfile:
+    writer = csv.writer(csvfile)
+    writer.writerow(['R', 'C'])  # Write header row
+    writer.writerows(coordinates)  # Write coordinate pairs
+
+
+# Read the CSV file into a pandas DataFrame
+df = pd.read_csv('graph_data.csv')
+#df_values = df.iloc[1:]
+
+# Shape is determined by max (should be set in config because the max shape may not necessarily be present)
+max_row = df['R'].max()
+max_col = df['C'].max()
+
+# empty dense matrix filled with zeros (can be converted to sparse matrix for operations)
+dense_matrix = np.zeros((max_row, max_col))
+
+# fill dense matrix
+for _, row in df.iterrows():
+    dense_matrix[row['R'] - 1, row['C'] - 1] = 1  # Subtract 1 to convert to zero-based indexing
+
+print(dense_matrix)
 
 def load_matrix() -> dict:
     """
@@ -82,6 +115,39 @@ def gen_gft(p_dict: dict, is_normalized: bool) -> list[np.ndarray]:
     psi_gft = np.squeeze(np.asarray(psi_gft))
     return [psi_gft, eigenvalues]
 
+def gen_gft_new(matrix: spmatrix, is_normalized: bool) -> list[np.ndarray]:
+    """
+    Constructs a PsiGFT from matlab dictionary (for now)
+    Args:
+        p_dict (dict): Given matlab dictionary
+        is_normalized (bool): Whether the matrix should be normalized
+    Returns:
+        list[np.ndarray]: list of numpy arrays in form [psi_gft, eigenvalues]
+    """
+    adj = matrix  # given adj matrix
+    # user can supply graph in matrix form or binary form (R, C, V) or (R, C)
+    # print(np.linalg.matrix_rank(adj.toarray()))
+    # calculate sum along columns
+    D = np.diag(np.array(adj.sum(axis=0)).flatten())
+    # print(np.linalg.matrix_rank(D.toarray()))
+    L = D - adj  # Laplacian matrix
+    # normalize eigenvectors = D^-1/2*L*D^-1/2
+    if is_normalized:
+        D_sqrt_inv = sp.diags(1.0 / np.sqrt(np.array(D.sum(axis=0)).flatten()))
+        new_L = D_sqrt_inv @ L @ D_sqrt_inv
+        eigenvalues, psi_gft = np.linalg.eigh(new_L.toarray())
+        idx = np.argsort(np.abs(eigenvalues))
+        eigenvalues = eigenvalues[idx]
+        psi_gft = psi_gft[:, idx]
+        return [psi_gft, eigenvalues]
+    # print(np.linalg.matrix_rank(L.toarray()))
+    eigenvalues, psi_gft = np.linalg.eigh(L, UPLO='U')
+    # sort eigenvalues by ascending order such that constant vector is in first cell
+    idx = np.argsort(eigenvalues)
+    eigenvalues = eigenvalues[idx]
+    psi_gft = psi_gft[:, idx]
+    psi_gft = np.squeeze(np.asarray(psi_gft))
+    return [psi_gft, eigenvalues]
 
 def gen_dft(t: int) -> np.ndarray:
     """
@@ -1015,7 +1081,7 @@ mat = load_matrix()
 #mdtm_X, recon_X = mdtm(is_syn=True, X=None, adj=None, mask=[], count_nnz=0, num_iters_check=10, lam=0.000001, K=10,
 #                       epsilon=1e-4)
 
-Psi_GFT = gen_gft(mat, False)
+Psi_GFT = gen_gft_new(mat['adj'], False)
 Psi_GFT = Psi_GFT[0]  # eigenvectors
 Phi_DFT = gen_dft(200)
 # non_orth_psi = Psi_GFT + 0.1 * np.outer(Psi_GFT[:, 0], Psi_GFT[:, 1])
