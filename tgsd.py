@@ -15,7 +15,7 @@ import matplotlib.pyplot as plt
 from matplotlib.cm import ScalarMappable
 from matplotlib.colors import Normalize
 from matplotlib.gridspec import GridSpec, GridSpecFromSubplotSpec
-
+from mpl_toolkits.mplot3d import Axes3D
 
 from Y_unittest import TestYConversion
 from W_unittest import TestWConversion
@@ -24,7 +24,7 @@ from collections import defaultdict
 from scipy.sparse import spmatrix
 
 import json
-import pandas
+import pandas as pd
 import random
 import csv
 
@@ -1021,7 +1021,7 @@ def mdtm_load_config():
         config = json.load(file)
 
     # Load X from a CSV file
-    X = pandas.read_csv(config['X']).values if config['X'] is not None else None
+    X = pd.read_csv(config['X']).values if config['X'] is not None else None
 
     if X is not None and config['adj']:
         # TODO
@@ -1042,7 +1042,7 @@ def mdtm_load_config():
     return X, adj, mask, count_nnz, num_iters_check, lam, K, epsilon
 
 
-def mdtm_find_outlier(p_X, p_recon, p_percentage, p_count) -> None:
+def mdtm_find_outlier(p_X, p_recon, p_count) -> None:
     """
     Plots outliers based on magnitude from the residual of p_X-(p_recon).
     Args:
@@ -1052,7 +1052,63 @@ def mdtm_find_outlier(p_X, p_recon, p_percentage, p_count) -> None:
         p_count: Number of subplots to display, one for each outlier in p_count. Maximum count of 10.
     """
     #TODO
+    outlier_indices = []
+    p_X, p_recon = np.abs(p_X), np.abs(p_recon)
+    residual = p_X-p_recon
+    p_count = min(p_count, 10)
 
+    for i in range(p_X.shape[2]):
+        slice_flattened = residual[:, :, i].flatten()
+        sorted_values = np.argsort(slice_flattened)[::-1]
+
+        # Determine the indices of the top fixed number of outliers
+        outlier_indices_fixed = sorted_values[:p_count]
+        row_indices_fixed, col_indices_fixed = np.unravel_index(outlier_indices_fixed, p_X[:, :, i].shape)
+        for row, col in zip(row_indices_fixed, col_indices_fixed):
+            outlier_indices.append((row, col, i))
+
+    pane_max_outlier_magnitude = {}
+    for (row, col, pane) in outlier_indices:
+        # Calculate the magnitude of the outlier - replace this with your actual calculation if different
+        magnitude = p_X[row, col, pane]
+
+        # Update the maximum outlier magnitude for each pane
+        if pane in pane_max_outlier_magnitude:
+            pane_max_outlier_magnitude[pane] = max(pane_max_outlier_magnitude[pane], magnitude)
+        else:
+            pane_max_outlier_magnitude[pane] = magnitude
+
+    top_panes = sorted(pane_max_outlier_magnitude, key=pane_max_outlier_magnitude.get, reverse=True)[:25]
+
+    fig = plt.figure(figsize=(10, 7))
+    ax = fig.add_subplot(111, projection='3d')
+
+    for pane_idx in top_panes:
+        pane_outliers = [(row, col, z) for row, col, z in outlier_indices if z == pane_idx]
+        magnitudes = [p_X[row, col, z] for row, col, z in pane_outliers]
+        sizes = [(magnitude / max(magnitudes)) * 100 for magnitude in magnitudes]
+        rows, cols, zs = zip(*pane_outliers)
+        ax.scatter(rows, cols, zs=pane_idx, s=sizes, depthshade=True, label=f'Pane {pane_idx}')
+
+    # Set labels and title
+    ax.set_xlim(ax.get_xlim()[::-1])
+    ax.set_xlabel('Row Index')
+    ax.set_ylim(ax.get_ylim()[::-1])
+    ax.set_ylabel('Column Index')
+
+    ax.set_zlabel('Pane Index')
+    ax.set_title('Top 25 Panes with 10 Largest Outliers')
+
+    # Set the ticks for the z-axis (pane index) to correspond to the indices of the panes
+    ax.set_xticks([0, p_X.shape[0]])
+    ax.set_yticks([0, p_X.shape[1]])
+    ax.set_zticks([min(top_panes), max(top_panes)])
+
+    # Adjust the view angle for better visualization
+    ax.view_init(elev=30, azim=120)  # Elevate and rotate the plot
+    ax.legend(loc='center left', bbox_to_anchor=(1.10, 0.5), title='Pane Number')
+
+    plt.show()
 def mdtm_find_row_outlier(p_X, p_recon, p_count) -> None:
     """
     Plots row outliers based on average row magnitude from the residual of p_X-(p_recon).
@@ -1078,9 +1134,9 @@ def mdtm_find_col_outlier(p_X, p_recon, p_count) -> None:
 mat = load_matrix()
 # ram = gen_rama(400, 10)
 #mdtm_input_x, mdtm_input_adj, mdtm_input_mask, mdtm_input_count_nnz, mdtm_input_num_iters_check, mdtm_input_lam, mdtm_input_K, mdtm_input_epsilon = mdtm_load_config()
-#mdtm_X, recon_X = mdtm(is_syn=True, X=None, adj=None, mask=[], count_nnz=0, num_iters_check=10, lam=0.000001, K=10,
-#                       epsilon=1e-4)
-
+mdtm_X, recon_X = mdtm(is_syn=True, X=None, adj=None, mask=[], count_nnz=0, num_iters_check=10, lam=0.000001, K=10,
+                       epsilon=1e-4)
+mdtm_find_outlier(mdtm_X, recon_X, 10)
 Psi_GFT = gen_gft_new(mat['adj'], False)
 Psi_GFT = Psi_GFT[0]  # eigenvectors
 Phi_DFT = gen_dft(200)
@@ -1093,5 +1149,5 @@ Y, W = tgsd(mat['X'], Psi_GFT, Phi_DFT, mat['mask'], iterations=100, k=7, lambda
 pred_matrix = Psi_GFT @ Y @ W @ Phi_DFT
 #find_outlier(mat['X'], Psi_GFT, Y, W, Phi_DFT, .1, 25)
 #find_row_outlier(mat['X'], Psi_GFT, Y, W, Phi_DFT, 10)
-find_col_outlier(mat['X'], Psi_GFT, Y, W, Phi_DFT, 10)
+#find_col_outlier(mat['X'], Psi_GFT, Y, W, Phi_DFT, 10)
 print(pred_matrix)
