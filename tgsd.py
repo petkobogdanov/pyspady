@@ -8,7 +8,7 @@ from math import gcd, pi
 import numpy as np
 import scipy.io
 import tensorly as tl
-import sparse
+#import sparse
 from tensorly.contrib.sparse import tensor as sp_tensor
 import scipy.sparse as sp
 from scipy.fftpack import fft
@@ -27,13 +27,14 @@ from collections import defaultdict
 from scipy.sparse import spmatrix
 
 import json
-import pandas
+import pandas as pd
 import random
 import csv
 
 
 # from numba import njit, prange, jit
 # from numba.typed import List
+
 # max number of pairs defined
 num_pairs = 100
 
@@ -66,6 +67,8 @@ for _, row in df.iterrows():
     dense_matrix[row['R'] - 1, row['C'] - 1] = 1  # Subtract 1 to convert to zero-based indexing
 
 print(dense_matrix)
+
+
 
 
 def load_matrix_demo() -> dict:
@@ -1074,14 +1077,14 @@ def config_run(config_path="config.json"):
     
     match str(config["psi"]).lower():
         case "ram":
-            #phi_d = gen_rama(400, 10)
+            #psi_d = gen_rama(400, 10)
             pass
         case "gft":
-            #phi_d = gen_gft(mat, False)[0]  # eigenvectors
+            #psi_d = gen_gft(mat, False)[0]  # eigenvectors
             pass
         case "dft":
             pass
-            #phi_d = gen_dft(200)
+            #psi_d = gen_dft(200)
         case _:
             raise Exception(f"PSI's dictionary, {config['psi']}, is invalid") 
         
@@ -1160,12 +1163,34 @@ def config_run(config_path="config.json"):
 # Y, W = tgsd(mat['X'], Psi_GFT, Phi_DFT, mat['mask'], iterations=100, k=7, lambda_1=.1, lambda_2=.1, lambda_3=1, rho_1=.01, rho_2=.01, type="rand")
 # # pred_matrix = Psi_GFT @ Y @ W @ Phi_DFT
 
-mat = load_matrix()
+mat = load_matrix_demo()
 
-# load in parameters from I/O file (loading in from MATLAB file for now but will be replaced by input from I/O file)
+# load in matlab data and save to csv files
 X = mat['X']
 adj_mtx = mat['adj']
 mask = mat['mask']
+
+X_filepath = 'matlab_demo_X.csv'
+adj_filepath = 'matlab_demo_adj.csv'
+mask_filepath = 'matlab_demo_mask.csv'
+
+adj_nonzero_coords = adj_mtx.nonzero()
+print(adj_nonzero_coords)
+
+# Zip the row and column indices together
+coords = zip(adj_nonzero_coords[0], adj_nonzero_coords[1])
+
+# Write the coordinates to a CSV file
+with open(adj_filepath, 'w', newline='') as csvfile:
+    writer = csv.writer(csvfile)
+    writer.writerow(['Row', 'Column'])  # Write header
+    for row, col in coords:
+        writer.writerow([row, col])
+
+np.savetxt(X_filepath, X, delimiter=',', fmt='%d')
+np.savetxt(mask_filepath, mask, delimiter=',', fmt='%d')
+
+# test tgsd with python stuff
 iterations = 100
 k = 7
 lambda_1 = 0.1
