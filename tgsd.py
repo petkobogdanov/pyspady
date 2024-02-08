@@ -1169,6 +1169,7 @@ mat = load_matrix_demo()
 X = mat['X']
 adj_mtx = mat['adj']
 mask = mat['mask']
+print(X)
 
 X_filepath = 'matlab_demo_X.csv'
 adj_filepath = 'matlab_demo_adj.csv'
@@ -1187,8 +1188,14 @@ with open(adj_filepath, 'w', newline='') as csvfile:
     for row, col in coords:
         writer.writerow([row, col])
 
-np.savetxt(X_filepath, X, delimiter=',', fmt='%d')
+# set to 10 digits for now (this was tested and the numbers can extend to many more digits)
+np.savetxt(X_filepath, X, delimiter=',', fmt='%.10f')
+
 np.savetxt(mask_filepath, mask, delimiter=',', fmt='%d')
+
+# open csv files into python matrices
+
+
 
 # test tgsd with python stuff
 iterations = 100
