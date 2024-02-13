@@ -35,41 +35,6 @@ import csv
 # from numba import njit, prange, jit
 # from numba.typed import List
 
-# max number of pairs defined
-num_pairs = 100
-
-# maximum row and column indices
-max_index = 20
-
-# Generate random coordinate pairs
-coordinates = [(random.randint(1, max_index), random.randint(1, max_index)) for _ in range(num_pairs)]
-
-# Write the coordinates to a CSV file
-with open('graph_data.csv', 'w', newline='') as csvfile:
-    writer = csv.writer(csvfile)
-    writer.writerow(['R', 'C'])  # Write header row
-    writer.writerows(coordinates)  # Write coordinate pairs
-
-
-# Read the CSV file into a pandas DataFrame
-df = pd.read_csv('graph_data.csv')
-#df_values = df.iloc[1:]
-
-# Shape is determined by max (should be set in config because the max shape may not necessarily be present)
-max_row = df['R'].max()
-max_col = df['C'].max()
-
-# empty dense matrix filled with zeros (can be converted to sparse matrix for operations)
-dense_matrix = np.zeros((max_row, max_col))
-
-# fill dense matrix
-for _, row in df.iterrows():
-    dense_matrix[row['R'] - 1, row['C'] - 1] = 1  # Subtract 1 to convert to zero-based indexing
-
-print(dense_matrix)
-
-
-
 
 def load_matrix_demo() -> dict:
     """
@@ -1023,6 +988,7 @@ def mdtm(is_syn: bool, X, adj, mask, count_nnz=10, num_iters_check=0, lam=0.0000
 
 # Automatic
 def config_run(config_path="config.json"):
+    data, psi_d, phi_d = 0
     # Try to open the config file
     try:
         with open(config_path) as file:
@@ -1071,23 +1037,34 @@ def config_run(config_path="config.json"):
     
     # Try to load the data
     try:
-        data = np.genfromtxt(config["x"], delimiter=',', skip_header=1)
+        X_filepath = 'matlab_demo_X.csv'
+        data = np.genfromtxt(X_filepath, delimiter=',')
+        #print(data)
     except:
         raise Exception(f"Error loading data from '{config['x']}': {e}")
-    
+
     match str(config["psi"]).lower():
         case "ram":
             #psi_d = gen_rama(400, 10)
             pass
         case "gft":
-            #psi_d = gen_gft(mat, False)[0]  # eigenvectors
+            adj_filepath = 'matlab_demo_adj.csv'
+            loaded_coords = np.loadtxt(adj_filepath, delimiter=',', dtype=int)
+            rows, cols = loaded_coords[:, 0], loaded_coords[:, 1]
+            mat = sp.csc_matrix((np.ones_like(rows), (rows, cols)), shape=(175, 175))
+            gft = gen_gft_new(mat, False)
+            gft = gft[0] # eigenvectors
+            psi_d = gft
             pass
         case "dft":
             pass
             #psi_d = gen_dft(200)
         case _:
             raise Exception(f"PSI's dictionary, {config['psi']}, is invalid") 
-        
+
+    print(psi_d)
+    print('aaa')
+
     match str(config["phi"]).lower():
         case "ram":
             #phi_d = gen_rama(400, 10)
@@ -1096,8 +1073,8 @@ def config_run(config_path="config.json"):
             #phi_d = gen_gft(mat, False)[0]  # eigenvectors
             pass
         case "dft":
+            phi_d = gen_dft(200)
             pass
-            #phi_d = gen_dft(200)
         case _:
             raise Exception(f"PHI's dictionary, {config['phi']}, is invalid") 
     
@@ -1108,7 +1085,7 @@ def config_run(config_path="config.json"):
     
     # If the load flag is enabled load from file
     if(load_flag):
-        # Retrieve the the correct path
+        # Retrieve the correct path
         load_path = config["load_path"] if "load_path" in config else "save.match"
         # Try to load the data
         try:
@@ -1148,6 +1125,17 @@ def config_run(config_path="config.json"):
             except Exception as e:
                 raise Exception(f"Error saving data: {e}")  
 
+    mask_filepath = 'matlab_demo_mask.csv'
+    mask_from_path = np.genfromtxt(mask_filepath, delimiter=',', ndmin=2, dtype=np.uint16)
+    iterations = 100
+    k = 7
+    lambda_1 = 0.1
+    lambda_2 = 0.1
+    lambda_3 = 1
+    rho_1 = 0.01
+    rho_2 = 0.01
+#    Y, W = tgsd(data, psi_d, phi_d, mask_from_path, iterations=iterations, k=k, lambda_1=lambda_1, lambda_2=lambda_2, lambda_3=lambda_3, rho_1=rho_1, rho_2=rho_2, type="rand")
+
 
 # mat = load_matrix()
 # ram = gen_rama(400, 10)
@@ -1169,33 +1157,70 @@ mat = load_matrix_demo()
 X = mat['X']
 adj_mtx = mat['adj']
 mask = mat['mask']
-print(X)
 
+# set path of X, adj_mtx, and mask
 X_filepath = 'matlab_demo_X.csv'
 adj_filepath = 'matlab_demo_adj.csv'
 mask_filepath = 'matlab_demo_mask.csv'
 
-adj_nonzero_coords = adj_mtx.nonzero()
-print(adj_nonzero_coords)
+# write X to csv
+# %.22f is minimum number of required decimals to ensure original X and loaded X are equivalent
+np.savetxt(X_filepath, X, delimiter=',', fmt='%.22f')
 
+# write adj_mtx to csv
+# get coordinates of non zero elements
+rows, cols = adj_mtx.nonzero()
 # Zip the row and column indices together
-coords = zip(adj_nonzero_coords[0], adj_nonzero_coords[1])
-
+coords = np.vstack((rows, cols)).T
 # Write the coordinates to a CSV file
-with open(adj_filepath, 'w', newline='') as csvfile:
-    writer = csv.writer(csvfile)
-    writer.writerow(['Row', 'Column'])  # Write header
-    for row, col in coords:
-        writer.writerow([row, col])
+np.savetxt(adj_filepath, coords, delimiter=',', fmt='%d')
 
-# set to 10 digits for now (this was tested and the numbers can extend to many more digits)
-np.savetxt(X_filepath, X, delimiter=',', fmt='%.10f')
-
+# write mask to csv
 np.savetxt(mask_filepath, mask, delimiter=',', fmt='%d')
 
-# open csv files into python matrices
+
+# open X csv
+X_from_path = np.genfromtxt(X_filepath, delimiter=',')
+
+# open adj_mtx csv
+loaded_coords = np.loadtxt(adj_filepath, delimiter=',', dtype=int)
+rows, cols = loaded_coords[:, 0], loaded_coords[:, 1]
+shape_rows, shape_cols = 175, 175
+adj_mtx_from_path = sp.csc_matrix((np.ones_like(rows), (rows, cols)), shape=(shape_rows, shape_cols))
+
+# open mask csv
+mask_from_path = np.genfromtxt(mask_filepath, delimiter=',', ndmin=2, dtype=np.uint16)
 
 
+# Checks if loaded and original are same
+if adj_mtx.shape != adj_mtx_from_path.shape:
+    print("Shapes are different. The matrices are not the same.")
+else:
+    # Check if the nonzero elements are the same
+    nonzero_adj_mtx = adj_mtx[adj_mtx != 0]
+    nonzero_loaded_adj_mtx = adj_mtx_from_path[adj_mtx_from_path != 0]
+
+    if np.allclose(nonzero_adj_mtx, nonzero_loaded_adj_mtx):
+        print("The matrices are the same.")
+    else:
+        print("The matrices are different.")
+
+if np.array_equal(X, X_from_path):
+    print("The data from CSV and new data are identical.")
+else:
+    print("There are differences between the data from CSV and new data.")
+
+    # Find indices where arrays are different
+    diff_indices = np.where(X != X_from_path)
+    counter = 0
+    # Print elements from each array that are different
+    print("Elements that differ:")
+    for row, col in zip(*diff_indices):
+        print(f"Original data at ({row}, {col}): {X[row, col]}")
+        print(f"New data at ({row}, {col}): {X_from_path[row, col]}")
+        counter = counter + 1
+
+    print(counter)
 
 # test tgsd with python stuff
 iterations = 100
@@ -1213,5 +1238,11 @@ Psi_GFT = Psi_GFT[0]  # eigenvectors
 Phi_DFT = gen_dft(200)
 
 # Perform tgsd
-Y, W = tgsd(X, Psi_GFT, Phi_DFT, mask, iterations=iterations, k=k, lambda_1=lambda_1, lambda_2=lambda_2, lambda_3=lambda_3, rho_1=rho_1, rho_2=rho_2, type="rand")
+#Y, W = tgsd(X, Psi_GFT, Phi_DFT, mask, iterations=iterations, k=k, lambda_1=lambda_1, lambda_2=lambda_2, lambda_3=lambda_3, rho_1=rho_1, rho_2=rho_2, type="rand")
 # pred_matrix = Psi_GFT @ Y @ W @ Phi_DFT
+
+Psi_GFT_new = gen_gft_new(adj_mtx_from_path, False)
+Psi_GFT_new = Psi_GFT_new[0]
+A, B = tgsd(X_from_path, Psi_GFT_new, Phi_DFT, mask_from_path, iterations=iterations, k=k, lambda_1=lambda_1, lambda_2=lambda_2, lambda_3=lambda_3, rho_1=rho_1, rho_2=rho_2, type="rand")
+
+#config_run()
