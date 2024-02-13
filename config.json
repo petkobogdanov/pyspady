@@ -1,12 +1,17 @@
 {
-    "x": "snakes_count_100.csv",
+    "x": "matlab_demo_X.csv",
     "psi": "GFT",
     "phi": "DFT",
-    "mask_mode": "RAND",
+    "mask_mode": "PATH",
     "mask_percent": 40,
-    "save_flag": true,
+    "save_flag": false,
     "override": false,
     "save_path": "save.match",
-    "load_flag": true,
-    "load_path": "save.match"
+    "load_flag": false,
+    "load_path": "save.match",
+    "first_x_dimension": 200,
+    "adj_square_dimension": 175,
+    "second_x_dimension": 175,
+    "adj_path": "matlab_demo_adj.csv",
+    "mask_path": "matlab_demo_mask.csv"
 }
