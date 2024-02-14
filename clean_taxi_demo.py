@@ -1,3 +1,5 @@
+import calendar
+
 import pandas as pd
 import numpy
 import numpy as np
@@ -102,7 +104,7 @@ def clean_taxi(month, method, perspective, mapping):
     if perspective == "point":
         find_outlier(d, Psi_GFT, Y, W, ram, .1, 30)
     elif perspective == "row":
-        find_row_outlier(d, Psi_GFT, Y, W, ram, 10, mapping=mapping)
+        find_row_outlier(d, Psi_GFT, Y, W, ram, 10, p_month=month, p_method=method)
     else:
         find_col_outlier(d, Psi_GFT, Y, W, ram, 10, p_month=month)
 
@@ -234,7 +236,7 @@ def find_outlier(p_X, p_Psi, p_Y, p_W, p_Phi, p_percentage, p_count) -> None:
     plt.show()
 
 
-def find_row_outlier(p_X, p_Psi, p_Y, p_W, p_Phi, p_count, mapping):
+def find_row_outlier(p_X, p_Psi, p_Y, p_W, p_Phi, p_count, p_month, p_method):
     """
     Plots row outliers based on average magnitude from the residual of X-(Ψ * p_Y * p_W * p_Φ).
     Args:
@@ -322,6 +324,9 @@ def find_row_outlier(p_X, p_Psi, p_Y, p_W, p_Phi, p_count, mapping):
     ctx.add_basemap(ax, source=ctx.providers.OpenStreetMap.Mapnik)
 
     ax.set_axis_off()  # Remove axis for a cleaner map
+    m = calendar.month_name[p_month]
+    s = "NYC Taxi Pickups" if p_method == "pickup" else "NYC TaxiDropoffs"
+    ax.set_title(f"{m} {s}")
     ax.set_aspect('equal')
 
     # Annotations
@@ -449,4 +454,7 @@ def find_col_outlier(p_X, p_Psi, p_Y, p_W, p_Phi, p_count, p_month):
 
 load_taxi_data = load_lat_long()
 mapping = load_taxi_data['Id_and_lat_long']
-clean_taxi(7, method="dropoff", perspective="column", mapping=mapping)
+# Month = Integer value of month, [1,12]]
+# Method = "pickup" or "dropoff"
+# Perspective = "point" or "row" or "column"
+clean_taxi(month=7, method="dropoff", perspective="row", mapping=mapping)
