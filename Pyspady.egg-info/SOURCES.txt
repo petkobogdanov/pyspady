@@ -1,0 +1,7 @@
+README.md
+setup.py
+Pyspady.egg-info/PKG-INFO
+Pyspady.egg-info/SOURCES.txt
+Pyspady.egg-info/dependency_links.txt
+Pyspady.egg-info/requires.txt
+Pyspady.egg-info/top_level.txt

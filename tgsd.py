@@ -1,3 +1,6 @@
+import json
+import os
+import random
 import cmath
 import datetime
 from datetime import datetime, timedelta
@@ -9,7 +12,7 @@ import numpy
 import numpy as np
 import scipy.io
 import tensorly as tl
-import sparse
+#import sparse
 from tensorly.contrib.sparse import tensor as sp_tensor
 import scipy.sparse as sp
 from scipy.fftpack import fft
@@ -35,40 +38,8 @@ import csv
 
 # from numba import njit, prange, jit
 # from numba.typed import List
-# max number of pairs defined
-num_pairs = 100
 
-# maximum row and column indices
-max_index = 20
-
-# Generate random coordinate pairs
-coordinates = [(random.randint(1, max_index), random.randint(1, max_index)) for _ in range(num_pairs)]
-
-# Write the coordinates to a CSV file
-with open('graph_data.csv', 'w', newline='') as csvfile:
-    writer = csv.writer(csvfile)
-    writer.writerow(['R', 'C'])  # Write header row
-    writer.writerows(coordinates)  # Write coordinate pairs
-
-# Read the CSV file into a pandas DataFrame
-df = pd.read_csv('graph_data.csv')
-# df_values = df.iloc[1:]
-
-# Shape is determined by max (should be set in config because the max shape may not necessarily be present)
-max_row = df['R'].max()
-max_col = df['C'].max()
-
-# empty dense matrix filled with zeros (can be converted to sparse matrix for operations)
-dense_matrix = np.zeros((max_row, max_col))
-
-# fill dense matrix
-for _, row in df.iterrows():
-    dense_matrix[row['R'] - 1, row['C'] - 1] = 1  # Subtract 1 to convert to zero-based indexing
-
-print(dense_matrix)
-
-
-def load_matrix() -> dict:
+def load_matrix_demo() -> dict:
     """
     Loads matrix from file in directory
     Returns:
@@ -1024,6 +995,197 @@ def mdtm(is_syn: bool, X, adj, mask, count_nnz=10, num_iters_check=0, lam=0.0000
     # [[S ⊡ Φ1Y1, Φ2Y2, Φ3Y3]
     return X, recon_t
 
+# Automatic
+def config_run(config_path: str="config.json"):
+    # Try to open the config file
+    try:
+        with open(config_path) as file:
+            config: json = json.load(file)
+    except FileNotFoundError:
+        raise Exception(f"Config file '{config_path}' not found")
+    except json.JSONDecodeError:
+        raise Exception(f"Invalid JSON format in '{config_path}'")
+    except Exception as e:
+        raise Exception(f"Error loading config file: {e}")
+
+    # Validate the mandatory keys
+    if not ("psi" in config):
+        raise Exception("Config must contain the 'psi' key")
+    if not ("phi" in config):
+        raise Exception("Config must contain the 'phi' key")
+    if not ("x" in config):
+        raise Exception("Config must contain the 'x' key")
+    if not ("mask_mode" in config):
+        raise Exception("Config must contain the 'mask_mode' key")
+    if not ("mask_percent" in config):
+        raise Exception("Config must contain the 'mask_percent' key")
+    if not ("first_x_dimension" in config):
+        raise Exception("Config must contain the 'first_x_dimension' key")
+    if not ("second_x_dimension" in config):
+        raise Exception("Config must contain the 'second_x_dimension' key")
+    
+    # Validate the first and second dimensions of x
+    first_x_dimension: int = config["first_x_dimension"]
+    second_x_dimension: int = config["second_x_dimension"]
+    if not (isinstance(first_x_dimension, int)):
+        raise Exception(f"Key 'first_x_dimension', {first_x_dimension}, is invalid. Please enter a valid int")
+    if not (isinstance(second_x_dimension, int)):
+        raise Exception(f"Key 'second_x_dimension', {second_x_dimension}, is invalid. Please enter a valid int")
+
+    psi: str = str(config["psi"]).lower()
+    phi: str = str(config["phi"]).lower()
+
+    # Validate the runnability of the instance 
+    if psi != "gft" and phi != "gft":
+        raise Exception("At least one of PSI or PHI must be 'gft'")
+    
+    save_flag: bool = False
+    load_flag: bool = False
+    
+    # Check if the save flag in the config is enabled and validate the input 
+    if "save_flag" in config:
+        if not isinstance(config["save_flag"], bool):
+            raise Exception("Invalid 'save_flag', must be a boolean")
+        else:
+            save_flag = config["save_flag"]
+
+    # Check if the load flag in the config is enabled and validate the input
+    if "load_flag" in config:
+        if not isinstance(config["load_flag"], bool):
+            raise Exception("Invalid 'load_flag', must be a boolean")
+        else:
+            load_flag = config["load_flag"]
+    
+    # Try to load the data
+    try:
+        data: np.ndarray[any] = np.genfromtxt(config["x"], delimiter=',')
+    except Exception as e:
+        raise Exception(f"Error loading data from '{config['x']}': {e}")
+
+    match str(config["psi"]).lower():
+        case "ram":
+            #psi_d = gen_rama(400, 10)
+            pass
+        case "gft":
+            # Attempt to load adj_list
+            try:
+                adj_data: np.ndarray[any] = np.loadtxt(config["adj_path"], delimiter=',', dtype=int)
+            except Exception as e:
+                raise Exception(f"Error loading adj_list data from '{config['adj_path']}': {e}")
+            # Validate the adjacency matrix's dimension
+            if not ("adj_square_dimension" in config):
+                raise Exception("PSI's dictionary, GFT, requires 'adj_square_dimension' key")
+            adj_square_dimension: int = config["adj_square_dimension"]
+            if not (isinstance(adj_square_dimension, int)):
+                raise Exception(f"Key, 'adj_square_dimension', {adj_square_dimension} is invalid. Please enter a valid int")
+            
+            rows, cols = adj_data[:, 0], adj_data[:, 1]
+            sparse_adj_mtx = sp.csc_matrix((np.ones_like(rows), (rows, cols)), shape=(adj_square_dimension, adj_square_dimension))
+            gft = gen_gft_new(sparse_adj_mtx, False)
+            psi_d = gft[0] # eigenvectors
+            pass
+        case "dft":
+            pass
+            #psi_d = gen_dft(200)
+        case _:
+            raise Exception(f"PSI's dictionary, {config['psi']}, is invalid") 
+
+    match str(config["phi"]).lower():
+        case "ram":
+            #phi_d = gen_rama(400, 10)
+            pass
+        case "gft":
+            # Validate the adjacency matrix's dimension
+            if not ("adj_square_dimension" in config):
+                raise Exception("PHI's dictionary, GFT, requires 'adj_square_dimension' key")
+            adj_square_dimension: int = config["adj_square_dimension"]
+            if not (isinstance(adj_square_dimension, int)):
+                raise Exception(f"Key, 'adj_square_dimension', {adj_square_dimension} is invalid. Please enter a valid int")
+            pass
+        case "dft":
+            phi_d = gen_dft(200)
+            pass
+        case _:
+            raise Exception(f"PHI's dictionary, {config['phi']}, is invalid") 
+    
+    # Validate the mask percent
+    mask_percent: int = config["mask_percent"]
+    if not (isinstance(mask_percent, int) or (mask_percent < 0 or mask_percent > 100)):
+        raise Exception(f"{mask_percent} is invalid. Please enter a valid percent")
+    
+    # If the load flag is enabled load from file
+    if(load_flag):
+        # Retrieve the the correct path
+        load_path: str = config["load_path"] if "load_path" in config else "save.match"
+        # Try to load the data
+        try:
+            mask_data: np.ndarray[any] = np.loadtxt(load_path, dtype=float)
+        except FileNotFoundError:
+            raise Exception(f"Load path '{load_path}' does not exist")
+    # If the load flag is not enabled check the mask mode
+    else:
+        # Validate and read the mask mode
+        match str(config["mask_mode"]).lower():
+            case "lin":
+                mask_data: np.ndarray[any] = np.linspace(1, round(mask_percent/100 * data.size), round(mask_percent/100 * data.size))
+            case "rand":
+                mask_data: np.ndarray[any] = np.array(random.sample(range(1, data.size), round(mask_percent/100 * data.size)))
+            case "path":
+                if not ("mask_path" in config):
+                    raise Exception("Config must contain the 'mask_path' key when mask_mode = is path")
+                # Attempt to load mask data
+                try:
+                    mask_data: np.ndarray[any] = np.genfromtxt(config["mask_path"], delimiter=',', ndmin=2, dtype=np.uint16)
+                except Exception as e:
+                    raise Exception(f"Error loading mask data from '{config['mask_path']}': {e}")
+            case _:
+                raise Exception(f"Invalid 'mask_mode': {config['mask_mode']}")
+    
+    # If the save flag is enabled save to file
+    if(save_flag):
+        # Retrieve the the correct path 
+        save_path: str = config["save_path"] if "save_path" in config else "save.match"
+        # Insure that data is not overwritten without user consent
+        if(os.path.exists(save_path)):
+            # If user permission is given try to write the data
+            if("override" in config and config["override"]):
+                try:
+                    np.savetxt(save_path, mask_data)
+                except Exception as e:
+                    raise Exception(f"Error saving data: {e}")   
+            # If user permission is not granted raise an exception 
+            else:
+                raise Exception(f"{save_path} already exists. Enable override to override the saved data.")
+        # If the path does not already exist try to write the data
+        else:
+            try:
+                np.savetxt(save_path, mask_data)
+            except Exception as e:
+                raise Exception(f"Error saving data: {e}")  
+
+    iterations = 100
+    k = 7
+    lambda_1 = 0.1
+    lambda_2 = 0.1
+    lambda_3 = 1
+    rho_1 = 0.01
+    rho_2 = 0.01
+    Y, W = tgsd(data, psi_d, phi_d, mask_data, iterations=iterations, k=k, lambda_1=lambda_1, lambda_2=lambda_2, lambda_3=lambda_3, rho_1=rho_1, rho_2=rho_2, type="rand")
+
+
+mat = load_matrix_demo()
+ram = gen_rama(400, 10)
+#mdtm(is_syn=True, X=None, mask=[], phi_type=None, phi_d=None, P=None, lam=None, rho=None, K=10, epsilon=1e-4,
+#     num_modes=3)
+
+Psi_GFT = gen_gft(mat, False)
+Psi_GFT = Psi_GFT[0]  # eigenvectors
+Phi_DFT = gen_dft(200)
+# non_orth_psi = Psi_GFT + 0.1 * np.outer(Psi_GFT[:, 0], Psi_GFT[:, 1])
+# non_orth_phi = Phi_DFT + 0.1 * np.outer(Phi_DFT[:, 0], Phi_DFT[:, 1])
+
+Y, W = tgsd(mat['X'], Psi_GFT, Phi_DFT, mat['mask'], iterations=100, k=7, lambda_1=.1, lambda_2=.1, lambda_3=1, rho_1=.01, rho_2=.01, type="rand")
+# pred_matrix = Psi_GFT @ Y @ W @ Phi_DFT    
 
 def mdtm_load_config():
     with open('mdtm_config.json', 'r') as file:
@@ -1031,14 +1193,6 @@ def mdtm_load_config():
 
     # Load X from a CSV file
     X = pd.read_csv(config['X']).values if config['X'] is not None else None
-
-    if X is not None and config['adj']:
-        # TODO
-        adj = config['adj']
-    if X is not None and config['mask_percentage_random']:
-        num_elements_to_mask = int(np.prod(X.shape) * (config['mask_percentage_random'] / 100.0))
-        mask = np.random.choice(np.prod(X.shape), size=num_elements_to_mask, replace=False)
-    else:
         mask = None
 
     # The rest of the configuration parameters
