@@ -1,6 +1,12 @@
 import pandas as pd
 import numpy
 import numpy as np
+import scipy.io
+import geopandas as gpd
+import contextily as ctx
+from shapely.geometry import Point
+from shapely import wkt
+
 from tgsd import tgsd, gen_gft_new, gen_rama, find_outlier, find_col_outlier, find_row_outlier
 import matplotlib.pyplot as plt
 import datetime
@@ -8,7 +14,36 @@ from datetime import datetime, timedelta
 from matplotlib.gridspec import GridSpec, GridSpecFromSubplotSpec
 from collections import defaultdict
 
-def clean_taxi(month):
+from pyproj import Transformer
+from geopy.geocoders import Photon
+from geopy.extra.rate_limiter import RateLimiter
+
+# Initialize Nominatim API
+geolocator = Photon(user_agent="measurements")
+
+# To prevent spamming the service, wrap the geolocator with a rate limiter
+geocode = RateLimiter(geolocator.geocode, min_delay_seconds=0.5)
+
+transformer = Transformer.from_crs("EPSG:4326", "EPSG:3857", always_xy=True)
+nyc_bounds_wgs84 = {
+    'west': -74.255735,
+    'south': 40.496044,
+    'east': -73.700272,
+    'north': 40.915256,
+}
+nyc_bounds_mercator = {
+    'west': transformer.transform(nyc_bounds_wgs84['west'], nyc_bounds_wgs84['south'])[0],
+    'south': transformer.transform(nyc_bounds_wgs84['west'], nyc_bounds_wgs84['south'])[1],
+    'east': transformer.transform(nyc_bounds_wgs84['east'], nyc_bounds_wgs84['north'])[0],
+    'north': transformer.transform(nyc_bounds_wgs84['east'], nyc_bounds_wgs84['north'])[1],
+}
+
+
+def load_lat_long():
+    return scipy.io.loadmat("Taxi_prep/lat_long_info.mat")
+
+
+def clean_taxi(month, method, perspective, mapping):
     cols = ['PULocationID', 'DOLocationID', 'formatted_time']
     all_data = pd.read_csv(f'Taxi_prep/tensor_data/sec_yellow_tripdata_2017-{month}', header=None, usecols=[1, 2, 3],
                            names=cols)
@@ -31,11 +66,14 @@ def clean_taxi(month):
 
     date_range = pd.date_range(start=f'2017-{month_st}-01', end=f'2017-{month_st}-{end_days} 23:00:00', freq='H')
 
-    # Aggregate trip counts by time_bin and PULocationID
-    aggregated_data = all_data.groupby(['time_bin', 'PULocationID']).size().reset_index(name='trip_count')
+    if method == "pickup":
+        aggregated_data = all_data.groupby(['time_bin', 'PULocationID']).size().reset_index(name='trip_count')
+        pivot_table = aggregated_data.pivot(index='time_bin', columns='PULocationID', values='trip_count')
 
-    # Pivot to get time bins as rows and PULocationIDs as columns, filling missing entries with 0
-    pivot_table = aggregated_data.pivot(index='time_bin', columns='PULocationID', values='trip_count')
+    elif method == "dropoff":
+        aggregated_data = all_data.groupby(['time_bin', 'DOLocationID']).size().reset_index(name='trip_count')
+        pivot_table = aggregated_data.pivot(index='time_bin', columns='DOLocationID', values='trip_count')
+
     pivot_table = pivot_table.reindex(date_range, fill_value=0).reindex(columns=np.arange(1, 266), fill_value=0)
     pivot_table.fillna(0, inplace=True)
     pivot_table_array = pivot_table.values.T
@@ -44,7 +82,9 @@ def clean_taxi(month):
     # Initialize a square matrix of zeros
     num_locations = 265  # Total number of unique locations
     adj_matrix = np.zeros((num_locations, num_locations))
-    total_pickups_by_location = aggregated_data.groupby('PULocationID')['trip_count'].sum()
+
+    total_pickups_by_location = aggregated_data.groupby('PULocationID')['trip_count'].sum() if method == "pickup" else \
+        aggregated_data.groupby('DOLocationID')['trip_count'].sum()
 
     for i in range(1, num_locations + 1):
         for j in range(1, num_locations + 1):
@@ -58,9 +98,14 @@ def clean_taxi(month):
     mask = np.random.randint(0, 65536, size=(1, 3500), dtype=np.uint16)
     Y, W = tgsd(d, Psi_GFT, ram, mask, iterations=100, k=7, lambda_1=.1, lambda_2=.1, lambda_3=1,
                 rho_1=.01, rho_2=.01, type="rand")
-    # find_outlier(d, Psi_GFT, Y, W, ram, .1, 30)
-    # find_row_outlier(d, Psi_GFT, Y, W, ram, 6)
-    find_col_outlier(d, Psi_GFT, Y, W, ram, 10)
+
+    if perspective == "point":
+        find_outlier(d, Psi_GFT, Y, W, ram, .1, 30)
+    elif perspective == "row":
+        find_row_outlier(d, Psi_GFT, Y, W, ram, 10, mapping=mapping)
+    else:
+        find_col_outlier(d, Psi_GFT, Y, W, ram, 10, p_month=month)
+
 
 def find_outlier(p_X, p_Psi, p_Y, p_W, p_Phi, p_percentage, p_count) -> None:
     """
@@ -189,7 +234,7 @@ def find_outlier(p_X, p_Psi, p_Y, p_W, p_Phi, p_percentage, p_count) -> None:
     plt.show()
 
 
-def find_row_outlier(p_X, p_Psi, p_Y, p_W, p_Phi, p_count):
+def find_row_outlier(p_X, p_Psi, p_Y, p_W, p_Phi, p_count, mapping):
     """
     Plots row outliers based on average magnitude from the residual of X-(Ψ * p_Y * p_W * p_Φ).
     Args:
@@ -220,43 +265,84 @@ def find_row_outlier(p_X, p_Psi, p_Y, p_W, p_Phi, p_count):
     # Define grid
     fig = plt.figure(figsize=(15, 3 * p_count))
     gs = GridSpec(num_plots, 2)  # Define grid layout for the figure
+    ax = fig.add_subplot(gs[p_count // 4:p_count - (p_count // 4) + 1, 0])
+
+    # Read centroids csv to gather locations for IDs
+    df = pd.read_csv("Taxi_prep/NHoodNameCentroids.csv")
+    # New dataframe column for geometry
+    df['geometry'] = df['the_geom'].apply(wkt.loads)
+    # Add CRS to new GDF
+    gdf = gpd.GeoDataFrame(df, geometry='geometry', crs="EPSG:4326")
+    # Determine outlier row IDs and fetch their
+    object_ids = [r + 1 for r in outlier_rows]
+    # New GDF containing only the outlier IDs, despite incorrect name mappings (we'll deal with that below)
+    gdf_outliers = gdf[gdf['OBJECTID'].isin(object_ids)]
+    gdf_outliers.crs = "EPSG:4326"
+    # Define CRS
+    gdf_outliers = gdf_outliers.to_crs(epsg=3857)
+    new_object_id = []
+    add_these_separately = []
+    # The mapping from zone_lookup.csv to NHoodNameCentroids is not 1:1, so we need to convert the mapping to
+    # properly obtain the zone ID and zone name to plot
+
+    for idx, row in gdf_outliers.iterrows():
+        zone_name = location_data.loc[idx + 1, 'Neighborhood']  # Get the real zone name corresponding to the outlier
+        try:
+            # Get the object ID in the dataframe for that zone
+            object_id = df.loc[df['Name'] == zone_name, 'OBJECTID'].iloc[0]
+            # Re-map
+            new_object_id.append(object_id)
+        except IndexError:
+            # Can't find it in the dataframe (either due to a misspelling/data error/etc.
+            # Make call to geocode API to gather coordinates (use sparingly, otherwise rate limited)
+            location = geocode(zone_name)
+            if location:
+                # Build these on to the GDF separately
+                point = Point(location.longitude, location.latitude)
+                add_these_separately.append((zone_name, point))
+
+    # Build new GDF
+    add_these_separately_gdf = pd.DataFrame(add_these_separately, columns=['Zone', 'geometry'])
+    add_these_separately_gdf = gpd.GeoDataFrame(add_these_separately_gdf, geometry='geometry', crs="EPSG:4326")
+
+    # New GDF of API-retrieved location, concatenate to the old GDF
+    proper_outlier_gdf = gpd.GeoDataFrame(df, geometry='geometry', crs="EPSG:4326")
+    proper_outlier = proper_outlier_gdf[proper_outlier_gdf['OBJECTID'].isin(new_object_id)]
+    proper_outlier = gpd.GeoDataFrame(pd.concat([proper_outlier, add_these_separately_gdf], ignore_index=True),
+                                      crs="EPSG:4326")
+
+    # !!! Plot coordinate points
+    proper_outlier.to_crs(epsg=3857).plot(ax=ax, marker='o', color='red', markersize=50)
+
+    # Sets bounds of the plot to NYC coordinates
+    ax.set_xlim([nyc_bounds_mercator['west'], nyc_bounds_mercator['east']])
+    ax.set_ylim([nyc_bounds_mercator['south'], nyc_bounds_mercator['north']])
+
+    # Base map of NYC
+    ctx.add_basemap(ax, source=ctx.providers.OpenStreetMap.Mapnik)
+
+    ax.set_axis_off()  # Remove axis for a cleaner map
+    ax.set_aspect('equal')
+
+    # Annotations
+    for idx, row in proper_outlier.iterrows():
+        x, y = row.geometry.x, row.geometry.y
+        zone_name = row.Name if row.Name is not None else row.Zone
+        # Add annotation with a small offset from the point
+        ax.annotate(zone_name, xy=(x, y), xytext=(x, y), textcoords="offset points",
+                    fontsize=12, ha='left', va='bottom',
+                    bbox=dict(boxstyle="round,pad=0.5", facecolor='white', edgecolor='black', alpha=0.9))
 
     # Iterate through each row index to build grid
     for i, row_idx in enumerate(outlier_rows):
-        # Subplot 1: Average Value of the Row Plotted Against the Time Series
-        ax = fig.add_subplot(gs[i, 0])
-
-        avg_value = np.mean(p_X[row_idx, :])  # Average value for the outlier row in X
-        time_series = p_Phi[row_idx % p_Phi.shape[0], :]  # Corresponding time series in Phi
-        differences = np.abs(time_series - avg_value)
-        closest_index = np.argmin(
-            differences)  # Index of the minimum difference (in other words, the closest time point for this avg. value)
-
-        ax.plot(time_series, color='blue')
-        # Highlight the point closest to the average value
-        ax.scatter(closest_index, time_series[closest_index], color='red', zorder=5)
-
-        # Annotate the row index
-        ax.annotate(f'Row {row_idx}', xy=(0.0, 0.95), xycoords='axes fraction',
-                    ha='left', va='top',
-                    fontweight='bold', fontsize=8,
-                    bbox=dict(boxstyle="round,pad=0.3", edgecolor='red', facecolor='white', alpha=0.5))
-
-        # Set y-axis
-        y_min, y_max = time_series.min(), time_series.max()
-        ax.set_ylim(y_min, y_max)
-
         # Subplot 2: Plot the Row Values Against Their Reconstructed Values (Fit)
-
         ax_compare = fig.add_subplot(gs[i, 1])
         ax_compare.plot(magnitude_X[row_idx, :], 'b-', label='X')
         ax_compare.plot(reconstructed_X[row_idx, :], 'g--', label='Reconstructed X')
 
         borough = location_data.loc[row_idx + 1, 'Borough']
         neighborhood = location_data.loc[row_idx + 1, 'Neighborhood']
-        # Assuming 'ax' is your current subplot axis
         ax_compare.set_title(f"{borough}: {neighborhood}")
-        # Set y-axis
         ax_compare.set_ylim(np.min(magnitude_X), np.max(magnitude_X))
 
         # Add legend to first subplot
@@ -266,24 +352,23 @@ def find_row_outlier(p_X, p_Psi, p_Y, p_W, p_Phi, p_count):
 
         # Enable the xlabel only for bottom subplot
         if i == num_plots - 1:
-            ax.set_xlabel('Time Index')
+            # ax.set_xlabel('Time Index')
             ax_compare.set_xlabel('Time Index')
         else:
-            ax.tick_params(labelbottom=False)
+            # ax.tick_params(labelbottom=False)
             ax_compare.tick_params(labelbottom=False)
 
         for index in range(0, 744, 24):
             ax_compare.axvline(x=index, color='red', linestyle='-',
                                linewidth=0.5)  # For the subplot of reconstructed values
-
-        ax.grid(True)
+        # ax.grid(True)
         ax_compare.grid(True)
 
     plt.subplots_adjust(hspace=0.5, bottom=0.1, right=0.9)
     plt.show()
 
 
-def find_col_outlier(p_X, p_Psi, p_Y, p_W, p_Phi, p_count):
+def find_col_outlier(p_X, p_Psi, p_Y, p_W, p_Phi, p_count, p_month):
     """
     Plots column outliers based on average magnitude from the residual of X-(Ψ * p_Y * p_W * p_Φ).
     Args:
@@ -337,7 +422,7 @@ def find_col_outlier(p_X, p_Psi, p_Y, p_W, p_Phi, p_count):
         # Set y-axis
         ax_compare.set_ylim(min(np.min(magnitude_X[:, col_idx]), np.min(reconstructed_X[:, col_idx])),
                             max(np.max(magnitude_X[:, col_idx]), np.max(reconstructed_X[:, col_idx])))
-        date_time_for_index = datetime(2017, 3, 1) + timedelta(hours=int(col_idx))
+        date_time_for_index = datetime(2017, p_month, 1) + timedelta(hours=int(col_idx))
 
         ax_compare.set_title(f"Day/Time: {date_time_for_index.strftime('%B %d, %Y, %H:%M')}")
 
@@ -361,4 +446,7 @@ def find_col_outlier(p_X, p_Psi, p_Y, p_W, p_Phi, p_count):
     plt.subplots_adjust(hspace=0.5, bottom=0.1, right=0.9)
     plt.show()
 
-clean_taxi(12)
+
+load_taxi_data = load_lat_long()
+mapping = load_taxi_data['Id_and_lat_long']
+clean_taxi(7, method="dropoff", perspective="column", mapping=mapping)
