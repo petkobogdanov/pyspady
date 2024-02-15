@@ -717,26 +717,31 @@ def find_col_outlier(p_X, p_Psi, p_Y, p_W, p_Phi, p_count):
     num_series_to_plot = min(p_Phi.shape[0], 10)  # Plot up to the first 10 time series
     fig = plt.figure(figsize=(15, 3 * p_count))
     gs = GridSpec(num_series_to_plot, 2)  # Define grid layout for the figure
+    # Antioutlier
+    sorted_columns = np.argsort(col_avg)  # Do not reverse the order
+    antianomaly_columns = sorted_columns[:p_count]
+
+    for i, col_idx in enumerate(antianomaly_columns):
+        # Subplot 1: Plot the AntiAnomaly Columns Against Their Reconstructed Values (Fit)
+        ax = fig.add_subplot(gs[i, 0])
+        ax.plot(magnitude_X[:, col_idx], 'b-', label='X')
+        ax.plot(reconstructed_X[:, col_idx], 'g--', label='Reconstructed X')
+
+        # Set y-axis
+        ax.set_ylim(min(np.min(magnitude_X[:, col_idx]), np.min(reconstructed_X[:, col_idx])),
+                            max(np.max(magnitude_X[:, col_idx]), np.max(reconstructed_X[:, col_idx])))
+        ax.set_title(f"Column {col_idx}")
+        if i == num_series_to_plot - 1:
+            ax.set_xlabel('Arbitrary Time Index')
+            ax.set_ylabel('Value on Time Series')
+        else:
+            # ax.tick_params(labelbottom=False)
+            ax.tick_params(labelbottom=False)
+        ax.grid(True)
+
 
     # Iterate through each column outlier index
     for i, col_idx in enumerate(outlier_columns):
-        # Subplot 1: Average Value of the Column Plotted Against the Time Series
-        ax = fig.add_subplot(gs[i, 0])
-        # Extracting the vertical time series for the outlier column
-        vertical_series = p_Phi[:, col_idx]
-        ax.plot(vertical_series, color='blue')
-
-        # Plot the column index
-        ax.annotate(f'Column {col_idx}', xy=(0.0, 0.95), xycoords='axes fraction', ha='left', va='top',
-                    fontweight='bold', fontsize=8,
-                    bbox=dict(boxstyle="round,pad=0.3", edgecolor='red', facecolor='white', alpha=0.5))
-        ax.invert_yaxis()  # Invert y-axis to have the top of the plot as the start of the series
-
-        # Set y-axis
-        y_min, y_max = vertical_series.min(), vertical_series.max()
-        ax.set_ylim(y_min, y_max)
-        ax.set_xlim(0, p_Phi.shape[0])
-
         # Subplot 2: Plot the Column Values Against Their Reconstructed Values (Fit)
         ax_compare = fig.add_subplot(gs[i, 1])
         ax_compare.plot(magnitude_X[:, col_idx], 'b-', label='X')
@@ -745,7 +750,7 @@ def find_col_outlier(p_X, p_Psi, p_Y, p_W, p_Phi, p_count):
         # Set y-axis
         ax_compare.set_ylim(min(np.min(magnitude_X[:, col_idx]), np.min(reconstructed_X[:, col_idx])),
                             max(np.max(magnitude_X[:, col_idx]), np.max(reconstructed_X[:, col_idx])))
-
+        ax_compare.set_title(f"Column {col_idx}")
         # Add legend to first subplot
         if i == 0:
             handles, labels = ax_compare.get_legend_handles_labels()
@@ -753,17 +758,16 @@ def find_col_outlier(p_X, p_Psi, p_Y, p_W, p_Phi, p_count):
 
         # Enable the xlabel only for bottom subplot
         if i == num_series_to_plot - 1:
-            ax.set_xlabel('Time Index')
-            ax_compare.set_xlabel('Time Index')
+            ax_compare.set_xlabel('Arbitrary Time Index')
+            ax_compare.set_ylabel('Value on Time Series')
         else:
-            ax.tick_params(labelbottom=False)
             ax_compare.tick_params(labelbottom=False)
 
-        ax.grid(True)
         ax_compare.grid(True)
 
     # Adjust as needed for visualization
-    plt.subplots_adjust(hspace=0.5, bottom=0.1, right=0.9)
+    plt.subplots_adjust(hspace=0.6, bottom=0.2, right=0.9)
+    plt.title(f"Anti-Anomaly vs. Anomaly Detection")
     plt.show()
 
 ###################################################################################################
@@ -1359,6 +1363,7 @@ def config_run(config_path: str="config.json"):
     rho_2 = 0.01
     Y, W = tgsd(data, psi_d, phi_d, mask_data, iterations=iterations, k=k, lambda_1=lambda_1, lambda_2=lambda_2, lambda_3=lambda_3, rho_1=rho_1, rho_2=rho_2, type="rand")
 
+    find_col_outlier(data, psi_d, Y, W, phi_d, 10)
     import clustering
     clustering.cluster(psi_d, Y)
 
