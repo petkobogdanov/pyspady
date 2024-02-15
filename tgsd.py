@@ -6,13 +6,14 @@ import datetime
 from datetime import datetime, timedelta
 # import itertools
 import math
+import ast
 from math import gcd, pi
 
 import numpy
 import numpy as np
 import scipy.io
 import tensorly as tl
-#import sparse
+import sparse
 from tensorly.contrib.sparse import tensor as sp_tensor
 import scipy.sparse as sp
 from scipy.fftpack import fft
@@ -54,42 +55,54 @@ def load_syn_data() -> dict:
     Returns:
         dict: dictionary with variable names as keys, and loaded matrices as values
     """
-    return scipy.io.loadmat('syn_data.mat')
+    def save_array(a, file):
+        for i, a in enumerate(a):
+            pd.DataFrame(a).to_csv(f"{file}_{i}.csv", index=False, header=False)
+    def save_lists(l, file):
+        for i, lst in enumerate(l):
+            pd.DataFrame(lst).to_csv(f"{file}_{i}.csv", index=False, header=False)
 
+    data = scipy.io.loadmat("syn_data.mat")
+    # Phi is of size (1, x). For Phi_x, each index i.e. d[Phi[0, x]] corresponds to a separate numpy array to load into a .csv.
+    # The numpy array will look like [phi_1, phi_2, phi_3] where phi_x represents the .csv file.
+    # P is of size (1, x).Each index i.e. d[P[0, x]] corresponds to a list of a list, i.e. [[200]],[[300]],[[32]]
+    # PhiYg follows the same format as Phi.
+    if 'Phi' in data:
+        phi_arrays = [data['Phi'][0, i] for i in range(data['Phi'].shape[1])]
+        save_array(phi_arrays, "Phi")
+    if 'P' in data:
+        p_lists = [data['P'][0, i] for i in range(data['P'].shape[1])]
+        save_lists(p_lists, "P")
+    if 'PhiYg' in data:
+        phiyg_arrays = [data['PhiYg'][0, i] for i in range(data['PhiYg'].shape[1])]
+        save_array(phiyg_arrays, "PhiYg")
 
-def gen_gft(p_dict: dict, is_normalized: bool) -> list[np.ndarray]:
-    """
-    Constructs a PsiGFT from matlab dictionary (for now)
-    Args:
-        p_dict (dict): Given matlab dictionary
-        is_normalized (bool): Whether the matrix should be normalized
-    Returns:
-        list[np.ndarray]: list of numpy arrays in form [psi_gft, eigenvalues]
-    """
-    adj = p_dict['adj']  # given adj matrix
-    # print(np.linalg.matrix_rank(adj.toarray()))
-    # calculate sum along columns
-    D = np.diag(np.array(adj.sum(axis=0)).flatten())
-    # print(np.linalg.matrix_rank(D.toarray()))
-    L = D - adj  # Laplacian matrix
-    # normalize eigenvectors = D^-1/2*L*D^-1/2
-    if is_normalized:
-        D_sqrt_inv = sp.diags(1.0 / np.sqrt(np.array(D.sum(axis=0)).flatten()))
-        new_L = D_sqrt_inv @ L @ D_sqrt_inv
-        eigenvalues, psi_gft = np.linalg.eigh(new_L.toarray())
-        idx = np.argsort(np.abs(eigenvalues))
-        eigenvalues = eigenvalues[idx]
-        psi_gft = psi_gft[:, idx]
-        return [psi_gft, eigenvalues]
-    # print(np.linalg.matrix_rank(L.toarray()))
-    eigenvalues, psi_gft = np.linalg.eigh(L, UPLO='U')
-    # sort eigenvalues by ascending order such that constant vector is in first cell
-    idx = np.argsort(eigenvalues)
-    eigenvalues = eigenvalues[idx]
-    psi_gft = psi_gft[:, idx]
-    psi_gft = np.squeeze(np.asarray(psi_gft))
-    return [psi_gft, eigenvalues]
+def save_to_numpy_arrays():
+    load_phi_array = []
+    for i in range(3):  # Assuming you have 3 files to load
+        arr = np.loadtxt(f'mdtd_demo_data/Phi_{i}.csv', delimiter=',')
+        load_phi_array.append(arr)
+    phi_array = np.empty((1, 3), dtype='object')
+    for i, arr in enumerate(load_phi_array):
+        phi_array[0, i] = arr
 
+    load_phi_yg_array = []
+    for i in range(3):  # Assuming you have 3 files to load
+        arr = np.loadtxt(f'mdtd_demo_data/PhiYg_{i}.csv', delimiter=',')
+        load_phi_yg_array.append(arr)
+    phi_yg_array = np.empty((1, 3), dtype='object')
+    for i, arr in enumerate(load_phi_yg_array):
+        phi_yg_array[0, i] = arr
+
+    list_string = pd.read_csv(f'mdtd_demo_data/P.csv', header=None).iloc[0]
+    p_array_of_arrays = np.empty((list_string.size,), dtype=object)
+    for i, item in enumerate(list_string):
+        p_array_of_arrays[i] = np.array([item], dtype=np.uint16)
+
+    # Reshape to 1xN where each element is a numpy array
+    p_array_of_arrays = p_array_of_arrays.reshape(1, -1)
+
+    return phi_array, phi_yg_array, p_array_of_arrays
 
 def gen_gft_new(matrix, is_normalized: bool) -> list[np.ndarray]:
     """
@@ -468,7 +481,6 @@ def tgsd(X, psi_d, phi_d, mask,
 
     return Y, W
 
-
 def find_outlier(p_X, p_Psi, p_Y, p_W, p_Phi, p_percentage, p_count) -> None:
     """
     Plots outliers based on magnitude from the residual of X-(Ψ * p_Y * p_W * p_Φ).
@@ -755,13 +767,189 @@ def find_col_outlier(p_X, p_Psi, p_Y, p_W, p_Phi, p_count):
     plt.show()
 
 ###################################################################################################
-def mdtm(is_syn: bool, X, adj, mask, count_nnz=10, num_iters_check=0, lam=0.000001, K=10, epsilon=1e-4):
-    def gen_syn_X(p_syn):
-        # Create a list of matrices from the cell array
-        return tl.kruskal_to_tensor((np.ones(p_syn['Kgen'][0, 0]), [matrix for matrix in p_syn['PhiYg'][0]]))
+def config_run(config_path: str="config.json"):
+    # Try to open the config file
+    try:
+        with open(config_path) as file:
+            config: json = json.load(file)
+    except FileNotFoundError:
+        raise Exception(f"Config file '{config_path}' not found")
+    except json.JSONDecodeError:
+        raise Exception(f"Invalid JSON format in '{config_path}'")
+    except Exception as e:
+        raise Exception(f"Error loading config file: {e}")
 
-    def gen_syn_lambda_rho(p_syn):
-        syn_lambda = [0.000001 for _ in p_syn['dimension'][0,]]
+    # Validate the mandatory keys
+    if not ("psi" in config):
+        raise Exception("Config must contain the 'psi' key")
+    if not ("phi" in config):
+        raise Exception("Config must contain the 'phi' key")
+    if not ("x" in config):
+        raise Exception("Config must contain the 'x' key")
+    if not ("mask_mode" in config):
+        raise Exception("Config must contain the 'mask_mode' key")
+    if not ("mask_percent" in config):
+        raise Exception("Config must contain the 'mask_percent' key")
+    if not ("first_x_dimension" in config):
+        raise Exception("Config must contain the 'first_x_dimension' key")
+    if not ("second_x_dimension" in config):
+        raise Exception("Config must contain the 'second_x_dimension' key")
+
+    # Validate the first and second dimensions of x
+    first_x_dimension: int = config["first_x_dimension"]
+    second_x_dimension: int = config["second_x_dimension"]
+    if not (isinstance(first_x_dimension, int)):
+        raise Exception(f"Key 'first_x_dimension', {first_x_dimension}, is invalid. Please enter a valid int")
+    if not (isinstance(second_x_dimension, int)):
+        raise Exception(f"Key 'second_x_dimension', {second_x_dimension}, is invalid. Please enter a valid int")
+
+    psi: str = str(config["psi"]).lower()
+    phi: str = str(config["phi"]).lower()
+
+    # Validate the runnability of the instance
+    if psi != "gft" and phi != "gft":
+        raise Exception("At least one of PSI or PHI must be 'gft'")
+
+    save_flag: bool = False
+    load_flag: bool = False
+
+    # Check if the save flag in the config is enabled and validate the input
+    if "save_flag" in config:
+        if not isinstance(config["save_flag"], bool):
+            raise Exception("Invalid 'save_flag', must be a boolean")
+        else:
+            save_flag = config["save_flag"]
+
+    # Check if the load flag in the config is enabled and validate the input
+    if "load_flag" in config:
+        if not isinstance(config["load_flag"], bool):
+            raise Exception("Invalid 'load_flag', must be a boolean")
+        else:
+            load_flag = config["load_flag"]
+
+    # Try to load the data
+    try:
+        data: np.ndarray[any] = np.genfromtxt(config["x"], delimiter=',')
+    except Exception as e:
+        raise Exception(f"Error loading data from '{config['x']}': {e}")
+
+    match str(config["psi"]).lower():
+        case "ram":
+            #psi_d = gen_rama(400, 10)
+            pass
+        case "gft":
+            # Attempt to load adj_list
+            try:
+                adj_data: np.ndarray[any] = np.loadtxt(config["adj_path"], delimiter=',', dtype=int)
+            except Exception as e:
+                raise Exception(f"Error loading adj_list data from '{config['adj_path']}': {e}")
+            # Validate the adjacency matrix's dimension
+            if not ("adj_square_dimension" in config):
+                raise Exception("PSI's dictionary, GFT, requires 'adj_square_dimension' key")
+            adj_square_dimension: int = config["adj_square_dimension"]
+            if not (isinstance(adj_square_dimension, int)):
+                raise Exception(f"Key, 'adj_square_dimension', {adj_square_dimension} is invalid. Please enter a valid int")
+
+            rows, cols = adj_data[:, 0], adj_data[:, 1]
+            sparse_adj_mtx = sp.csc_matrix((np.ones_like(rows), (rows, cols)), shape=(adj_square_dimension, adj_square_dimension))
+            gft = gen_gft_new(sparse_adj_mtx, False)
+            psi_d = gft[0] # eigenvectors
+            pass
+        case "dft":
+            pass
+            #psi_d = gen_dft(200)
+        case _:
+            raise Exception(f"PSI's dictionary, {config['psi']}, is invalid")
+
+    match str(config["phi"]).lower():
+        case "ram":
+            #phi_d = gen_rama(400, 10)
+            pass
+        case "gft":
+            # Validate the adjacency matrix's dimension
+            if not ("adj_square_dimension" in config):
+                raise Exception("PHI's dictionary, GFT, requires 'adj_square_dimension' key")
+            adj_square_dimension: int = config["adj_square_dimension"]
+            if not (isinstance(adj_square_dimension, int)):
+                raise Exception(f"Key, 'adj_square_dimension', {adj_square_dimension} is invalid. Please enter a valid int")
+            pass
+        case "dft":
+            phi_d = gen_dft(200)
+            pass
+        case _:
+            raise Exception(f"PHI's dictionary, {config['phi']}, is invalid")
+
+    # Validate the mask percent
+    mask_percent: int = config["mask_percent"]
+    if not (isinstance(mask_percent, int) or (mask_percent < 0 or mask_percent > 100)):
+        raise Exception(f"{mask_percent} is invalid. Please enter a valid percent")
+
+    # If the load flag is enabled load from file
+    if(load_flag):
+        # Retrieve the the correct path
+        load_path: str = config["load_path"] if "load_path" in config else "save.match"
+        # Try to load the data
+        try:
+            mask_data: np.ndarray[any] = np.loadtxt(load_path, dtype=float)
+        except FileNotFoundError:
+            raise Exception(f"Load path '{load_path}' does not exist")
+    # If the load flag is not enabled check the mask mode
+    else:
+        # Validate and read the mask mode
+        match str(config["mask_mode"]).lower():
+            case "lin":
+                mask_data: np.ndarray[any] = np.linspace(1, round(mask_percent/100 * data.size), round(mask_percent/100 * data.size))
+            case "rand":
+                mask_data: np.ndarray[any] = np.array(random.sample(range(1, data.size), round(mask_percent/100 * data.size)))
+            case "path":
+                if not ("mask_path" in config):
+                    raise Exception("Config must contain the 'mask_path' key when mask_mode = is path")
+                # Attempt to load mask data
+                try:
+                    mask_data: np.ndarray[any] = np.genfromtxt(config["mask_path"], delimiter=',', ndmin=2, dtype=np.uint16)
+                except Exception as e:
+                    raise Exception(f"Error loading mask data from '{config['mask_path']}': {e}")
+            case _:
+                raise Exception(f"Invalid 'mask_mode': {config['mask_mode']}")
+
+    # If the save flag is enabled save to file
+    if(save_flag):
+        # Retrieve the the correct path
+        save_path: str = config["save_path"] if "save_path" in config else "save.match"
+        # Insure that data is not overwritten without user consent
+        if(os.path.exists(save_path)):
+            # If user permission is given try to write the data
+            if("override" in config and config["override"]):
+                try:
+                    np.savetxt(save_path, mask_data)
+                except Exception as e:
+                    raise Exception(f"Error saving data: {e}")
+            # If user permission is not granted raise an exception
+            else:
+                raise Exception(f"{save_path} already exists. Enable override to override the saved data.")
+        # If the path does not already exist try to write the data
+        else:
+            try:
+                np.savetxt(save_path, mask_data)
+            except Exception as e:
+                raise Exception(f"Error saving data: {e}")
+
+    iterations = 100
+    k = 7
+    lambda_1 = 0.1
+    lambda_2 = 0.1
+    lambda_3 = 1
+    rho_1 = 0.01
+    rho_2 = 0.01
+    Y, W = tgsd(data, psi_d, phi_d, mask_data, iterations=iterations, k=k, lambda_1=lambda_1, lambda_2=lambda_2, lambda_3=lambda_3, rho_1=rho_1, rho_2=rho_2, type="rand")
+
+def mdtm(is_syn: bool, X, adj, mask, count_nnz=10, num_iters_check=0, lam=0.000001, K=10, epsilon=1e-4):
+    def gen_syn_X(p_PhiYg):
+        # Create a list of matrices from the cell array
+        return tl.kruskal_to_tensor((np.ones(10), [matrix for matrix in p_PhiYg[0]]))
+
+    def gen_syn_lambda_rho(p_dim):
+        syn_lambda = [0.000001 for _ in range(p_dim)]
         syn_rho = [val * 5 for val in syn_lambda]
         return syn_lambda, syn_rho
 
@@ -777,14 +965,14 @@ def mdtm(is_syn: bool, X, adj, mask, count_nnz=10, num_iters_check=0, lam=0.0000
         return tuple(indices)
 
     if is_syn:
-        s_data = load_syn_data()
-        X = gen_syn_X(s_data)  # numpy array of x * y * z
+        MDTD_Demo_Phi, MDTD_Demo_PhiYg, MDTD_Demo_P = save_to_numpy_arrays()
+        X = gen_syn_X(MDTD_Demo_PhiYg)  # numpy array of x * y * z
         num_modes = X.ndim
-        lam, rho = gen_syn_lambda_rho(s_data)  # list of size n
-        phi_d = s_data['Phi']  # list of numpy arrays in form (1, n) where each atom corresponds to a dictionary.
+        lam, rho = gen_syn_lambda_rho(num_modes)  # list of size n
+        phi_d = MDTD_Demo_Phi  # list of numpy arrays in form (1, n) where each atom corresponds to a dictionary.
         phi_type = ['not_ortho_dic', 'no_dic', 'no_dic']
         # first coordinate of each dictionary = shape of X
-        P = s_data['P']  # Y values of shape of X
+        P = MDTD_Demo_P  # Y values of shape of X
     else:
         if len(X) == 0:
             raise Exception
@@ -794,12 +982,12 @@ def mdtm(is_syn: bool, X, adj, mask, count_nnz=10, num_iters_check=0, lam=0.0000
             lam = [temp] * num_modes if temp is not None else 0.000001
             rho = [val * 5 for val in lam]
             phi_d = []
-            for mode in range(num_modes):
+            #for mode in range(num_modes):
                 # Fill with dictionaries
-                # if mode == 0 or mode == 1:
-                # nested_dictionary = gen_gft(p_dict, False) # Fix adjacency matrix here
+                #if mode == 0 or mode == 1:
+                    #nested_dictionary = gen_gft(p_dict, False) # Fix adjacency matrix here
                 # phi_d.append(nested_dictionary)
-                return
+                #return
 
             # Convert the list to a numpy object array of size (1, N)
             phi_d = np.empty((1, num_modes), dtype=object)
@@ -824,7 +1012,7 @@ def mdtm(is_syn: bool, X, adj, mask, count_nnz=10, num_iters_check=0, lam=0.0000
     for _ in range(len(phi_type)):
         num = X.shape[_]
         if phi_type[_] == "no_dic":
-            P[0, _] = np.array([[num]], dtype=np.uint16)
+            P[0, _] = np.array([num], dtype=np.uint16)
 
     # cast to Double for mask indexing i.e. double_X = double(X)
     print(f"Phi types in this run: {phi_type}")
@@ -872,7 +1060,7 @@ def mdtm(is_syn: bool, X, adj, mask, count_nnz=10, num_iters_check=0, lam=0.0000
     Y_init, PhiYInit = [None] * num_modes, [None] * num_modes
 
     for n in range(len(dimorder)):
-        Y_init[n] = np.random.rand(P[0, n][0, 0], K)
+        Y_init[n] = np.random.rand(P[0, n][0], K)
         PhiYInit[n] = (phi_d[0, n] @ Y_init[n]) if phi_type[n] in ["not_ortho_dic", "ortho_dic"] else Y_init[n]
         YPhiInitInner[:, :, n] = PhiYInit[n].T @ PhiYInit[n] if phi_type[n] == "not_ortho_dic" else Y_init[n].T @ \
                                                                                                     Y_init[n]
@@ -883,7 +1071,6 @@ def mdtm(is_syn: bool, X, adj, mask, count_nnz=10, num_iters_check=0, lam=0.0000
     PhiY = PhiYInit
     YPhi_Inner = YPhiInitInner
     Z = Y
-    fit = 0
     recon_t = tl.kruskal_to_tensor((normalize_scaling, [matrix for matrix in PhiY]))
     normX = tl.norm(tl.tensor(X), order=2)
     objs = np.zeros((MAX_ITERS, num_modes))
@@ -1023,7 +1210,7 @@ def config_run(config_path: str="config.json"):
         raise Exception("Config must contain the 'first_x_dimension' key")
     if not ("second_x_dimension" in config):
         raise Exception("Config must contain the 'second_x_dimension' key")
-    
+
     # Validate the first and second dimensions of x
     first_x_dimension: int = config["first_x_dimension"]
     second_x_dimension: int = config["second_x_dimension"]
@@ -1035,14 +1222,14 @@ def config_run(config_path: str="config.json"):
     psi: str = str(config["psi"]).lower()
     phi: str = str(config["phi"]).lower()
 
-    # Validate the runnability of the instance 
+    # Validate the runnability of the instance
     if psi != "gft" and phi != "gft":
         raise Exception("At least one of PSI or PHI must be 'gft'")
-    
+
     save_flag: bool = False
     load_flag: bool = False
-    
-    # Check if the save flag in the config is enabled and validate the input 
+
+    # Check if the save flag in the config is enabled and validate the input
     if "save_flag" in config:
         if not isinstance(config["save_flag"], bool):
             raise Exception("Invalid 'save_flag', must be a boolean")
@@ -1055,7 +1242,7 @@ def config_run(config_path: str="config.json"):
             raise Exception("Invalid 'load_flag', must be a boolean")
         else:
             load_flag = config["load_flag"]
-    
+
     # Try to load the data
     try:
         data: np.ndarray[any] = np.genfromtxt(config["x"], delimiter=',')
@@ -1078,7 +1265,7 @@ def config_run(config_path: str="config.json"):
             adj_square_dimension: int = config["adj_square_dimension"]
             if not (isinstance(adj_square_dimension, int)):
                 raise Exception(f"Key, 'adj_square_dimension', {adj_square_dimension} is invalid. Please enter a valid int")
-            
+
             rows, cols = adj_data[:, 0], adj_data[:, 1]
             sparse_adj_mtx = sp.csc_matrix((np.ones_like(rows), (rows, cols)), shape=(adj_square_dimension, adj_square_dimension))
             gft = gen_gft_new(sparse_adj_mtx, False)
@@ -1088,7 +1275,7 @@ def config_run(config_path: str="config.json"):
             pass
             #psi_d = gen_dft(200)
         case _:
-            raise Exception(f"PSI's dictionary, {config['psi']}, is invalid") 
+            raise Exception(f"PSI's dictionary, {config['psi']}, is invalid")
 
     match str(config["phi"]).lower():
         case "ram":
@@ -1106,13 +1293,13 @@ def config_run(config_path: str="config.json"):
             phi_d = gen_dft(200)
             pass
         case _:
-            raise Exception(f"PHI's dictionary, {config['phi']}, is invalid") 
-    
+            raise Exception(f"PHI's dictionary, {config['phi']}, is invalid")
+
     # Validate the mask percent
     mask_percent: int = config["mask_percent"]
     if not (isinstance(mask_percent, int) or (mask_percent < 0 or mask_percent > 100)):
         raise Exception(f"{mask_percent} is invalid. Please enter a valid percent")
-    
+
     # If the load flag is enabled load from file
     if(load_flag):
         # Retrieve the the correct path
@@ -1127,7 +1314,7 @@ def config_run(config_path: str="config.json"):
         # Validate and read the mask mode
         match str(config["mask_mode"]).lower():
             case "lin":
-                mask_data: np.ndarray[any] = np.linspace(1, round(mask_percent/100 * data.size), round(mask_percent/100 * data.size))
+                mask_data: np.ndarray[any] = np.linspace(1, round(mask_percent/100 * data.size), round(mask_percent/100 * data.size), dtype=np.uint16)
             case "rand":
                 mask_data: np.ndarray[any] = np.array(random.sample(range(1, data.size), round(mask_percent/100 * data.size)))
             case "path":
@@ -1140,10 +1327,10 @@ def config_run(config_path: str="config.json"):
                     raise Exception(f"Error loading mask data from '{config['mask_path']}': {e}")
             case _:
                 raise Exception(f"Invalid 'mask_mode': {config['mask_mode']}")
-    
+
     # If the save flag is enabled save to file
     if(save_flag):
-        # Retrieve the the correct path 
+        # Retrieve the the correct path
         save_path: str = config["save_path"] if "save_path" in config else "save.match"
         # Insure that data is not overwritten without user consent
         if(os.path.exists(save_path)):
@@ -1152,8 +1339,8 @@ def config_run(config_path: str="config.json"):
                 try:
                     np.savetxt(save_path, mask_data)
                 except Exception as e:
-                    raise Exception(f"Error saving data: {e}")   
-            # If user permission is not granted raise an exception 
+                    raise Exception(f"Error saving data: {e}")
+            # If user permission is not granted raise an exception
             else:
                 raise Exception(f"{save_path} already exists. Enable override to override the saved data.")
         # If the path does not already exist try to write the data
@@ -1161,7 +1348,7 @@ def config_run(config_path: str="config.json"):
             try:
                 np.savetxt(save_path, mask_data)
             except Exception as e:
-                raise Exception(f"Error saving data: {e}")  
+                raise Exception(f"Error saving data: {e}")
 
     iterations = 100
     k = 7
@@ -1172,20 +1359,8 @@ def config_run(config_path: str="config.json"):
     rho_2 = 0.01
     Y, W = tgsd(data, psi_d, phi_d, mask_data, iterations=iterations, k=k, lambda_1=lambda_1, lambda_2=lambda_2, lambda_3=lambda_3, rho_1=rho_1, rho_2=rho_2, type="rand")
 
-
-mat = load_matrix_demo()
-ram = gen_rama(400, 10)
-#mdtm(is_syn=True, X=None, mask=[], phi_type=None, phi_d=None, P=None, lam=None, rho=None, K=10, epsilon=1e-4,
-#     num_modes=3)
-
-Psi_GFT = gen_gft(mat, False)
-Psi_GFT = Psi_GFT[0]  # eigenvectors
-Phi_DFT = gen_dft(200)
-# non_orth_psi = Psi_GFT + 0.1 * np.outer(Psi_GFT[:, 0], Psi_GFT[:, 1])
-# non_orth_phi = Phi_DFT + 0.1 * np.outer(Phi_DFT[:, 0], Phi_DFT[:, 1])
-
-Y, W = tgsd(mat['X'], Psi_GFT, Phi_DFT, mat['mask'], iterations=100, k=7, lambda_1=.1, lambda_2=.1, lambda_3=1, rho_1=.01, rho_2=.01, type="rand")
-# pred_matrix = Psi_GFT @ Y @ W @ Phi_DFT    
+    import clustering
+    clustering.cluster(psi_d, Y)
 
 def mdtm_load_config():
     with open('mdtm_config.json', 'r') as file:
@@ -1193,7 +1368,11 @@ def mdtm_load_config():
 
     # Load X from a CSV file
     X = pd.read_csv(config['X']).values if config['X'] is not None else None
-        mask = None
+    adj_data = pd.read_csv(config['adj']).values if config['adj'] is not None else None
+    rows, cols = adj_data[:, 0], adj_data[:, 1]
+    #sparse_adj_mtx = sp.csc_matrix((np.ones_like(rows), (rows, cols)), shape=(adj_square_dimension, adj_square_dimension))
+    #gft = gen_gft_new(sparse_adj_mtx, False)
+    mask = None
 
     # The rest of the configuration parameters
     count_nnz: config['count_nnz']
@@ -1202,10 +1381,9 @@ def mdtm_load_config():
     K = config['K']
     epsilon = config['epsilon']
 
-    return X, adj, mask, count_nnz, num_iters_check, lam, K, epsilon
+    return X, mask, count_nnz, num_iters_check, lam, K, epsilon
 
-
-def mdtm_find_outlier(p_X, p_recon, p_count) -> None:
+def mdtm_find_outlier(p_X, p_recon, p_count, p_slice) -> None:
     """
     Plots outliers based on magnitude from the residual of p_X-(p_recon).
     Args:
@@ -1276,11 +1454,70 @@ def mdtm_find_outlier(p_X, p_recon, p_count) -> None:
 
         plt.show()
 
-    def horizontal_slice():
-        # Find average magnitude of each horizontal slice of p_X and graph
-        return None
-    def vertical_slice():
-        return None
+    def x_slice():
+        average_magnitude_per_slice = np.mean(residual, axis=(1, 2))
+        top_slices_indices = np.argsort(average_magnitude_per_slice)[::-1][:p_count]
+        outlier_indices_sorted_by_pane = sorted(top_slices_indices)
+
+        fig = plt.figure(figsize=(10, 7))
+        ax = fig.add_subplot(111, projection='3d')
+
+        y_range = np.arange(p_X.shape[1])
+        z_range = np.arange(p_X.shape[2])
+
+        Y_mesh, Z_mesh = np.meshgrid(y_range, z_range)
+        normalized_magnitudes = average_magnitude_per_slice[top_slices_indices] / np.max(average_magnitude_per_slice[top_slices_indices])
+
+        for i, slice_index in enumerate(outlier_indices_sorted_by_pane):
+            X_mesh = np.full(Y_mesh.shape, slice_index)
+            alpha = normalized_magnitudes[i] * 0.9 + 0.1
+
+            ax.plot_surface(X_mesh, Y_mesh, Z_mesh, alpha=alpha, label=f'X Slice #{slice_index}')
+
+        # Set the labels and title
+        ax.set_xlabel('Row Index')
+        ax.set_ylabel('Column Index')
+        ax.set_zlabel('Pane Index')
+        ax.set_title('Top 10 Panes by Average Magnitude')
+
+        # Adjust the legend and the view angle
+        ax.legend(loc='center left', bbox_to_anchor=(1.1, 0.5), title='Pane Number')
+        ax.view_init(elev=10, azim=-70)  # Adjust the view angle
+
+        plt.show()
+
+    def y_slice():
+        average_magnitude_per_slice = np.mean(residual, axis=(0, 2))
+        top_slices_indices = np.argsort(average_magnitude_per_slice)[::-1][:p_count]
+        outlier_indices_sorted_by_pane = sorted(top_slices_indices)
+
+        fig = plt.figure(figsize=(10, 7))
+        ax = fig.add_subplot(111, projection='3d')
+
+        x_range = np.arange(p_X.shape[0])
+        z_range = np.arange(p_X.shape[2])
+
+        X_mesh, Z_mesh = np.meshgrid(x_range, z_range)
+        normalized_magnitudes = average_magnitude_per_slice[top_slices_indices] / np.max(average_magnitude_per_slice[top_slices_indices])
+
+        for i, slice_index in enumerate(outlier_indices_sorted_by_pane):
+            Y_mesh = np.full(X_mesh.shape, slice_index)
+            alpha = normalized_magnitudes[i] * 0.9 + 0.1
+
+            ax.plot_surface(X_mesh, Y_mesh, Z_mesh, alpha=alpha, label=f'Y Slice #{slice_index}')
+
+        # Set the labels and title
+        ax.set_xlabel('Row Index')
+        ax.set_ylabel('Column Index')
+        ax.set_zlabel('Pane Index')
+        ax.set_title('Top 10 Y Panes by Average Magnitude')
+
+        # Adjust the legend and the view angle
+        ax.legend(loc='center left', bbox_to_anchor=(1.1, 0.5), title='Pane Number')
+        ax.view_init(elev=10, azim=-70)  # Adjust the view angle
+
+        plt.show()
+
     def z_slice():
         average_magnitude_per_slice = np.mean(residual, axis=(0, 1))
         top_slices_indices = np.argsort(average_magnitude_per_slice)[::-1][:p_count]
@@ -1305,13 +1542,13 @@ def mdtm_find_outlier(p_X, p_recon, p_count) -> None:
             alpha = normalized_magnitudes[i] * 0.9 + 0.1  # Scale alpha between 0.2 and 1.0
 
             # Plot the meshgrid as a semi-transparent plane
-            ax.plot_surface(X_mesh, Y_mesh, Z_mesh, alpha=alpha, label=f'Pane {slice_index}')
+            ax.plot_surface(X_mesh, Y_mesh, Z_mesh, alpha=alpha, label=f'Z Slice #{slice_index}')
 
         # Set the labels and title
         ax.set_xlabel('Row Index')
         ax.set_ylabel('Column Index')
         ax.set_zlabel('Pane Index')
-        ax.set_title('Top 10 Panes by Average Magnitude')
+        ax.set_title('Top 10 Z Panes by Average Magnitude')
 
         # Adjust the legend and the view angle
         ax.legend(loc='center left', bbox_to_anchor=(1.1, 0.5), title='Pane Number')
@@ -1319,7 +1556,11 @@ def mdtm_find_outlier(p_X, p_recon, p_count) -> None:
 
         plt.show()
 
-    z_slice()
+    # Slice method
+    if p_slice == "x": x_slice()
+    elif p_slice == "y": y_slice()
+    else: z_slice()
+
 def mdtm_find_row_outlier(p_X, p_recon, p_count) -> None:
     """
     Plots row outliers based on average row magnitude from the residual of p_X-(p_recon).
@@ -1344,23 +1585,25 @@ def mdtm_find_col_outlier(p_X, p_recon, p_count) -> None:
 
 ###################################################################################################
 if __name__ == '__main__':
-    mat = load_matrix()
-    ram = gen_rama(t=200, max_period=5) # 200x10
+    config_run() #<---- Michael and Proshanto
+    #mat = load_matrix_demo()
+    #ram = gen_rama(t=200, max_period=5) # 200x10
     #mdtm_input_x, mdtm_input_adj, mdtm_input_mask, mdtm_input_count_nnz, mdtm_input_num_iters_check, mdtm_input_lam, mdtm_input_K, mdtm_input_epsilon = mdtm_load_config()
     #mdtm_X, recon_X = mdtm(is_syn=True, X=None, adj=None, mask=[], count_nnz=0, num_iters_check=10, lam=0.000001, K=10,
     #                       epsilon=1e-4)
     #mdtm_find_outlier(mdtm_X, recon_X, 10)
-    Psi_GFT = gen_gft_new(mat['adj'], False)
-    Psi_GFT = Psi_GFT[0]  # eigenvectors
-    Phi_DFT = gen_dft(200)
+    #Psi_GFT = gen_gft_new(mat['adj'], False)
+    #Psi_GFT = Psi_GFT[0]  # eigenvectors
+    #Phi_DFT = gen_dft(200)
     # non_orth_psi = Psi_GFT + 0.1 * np.outer(Psi_GFT[:, 0], Psi_GFT[:, 1])
     # non_orth_phi = Phi_DFT + 0.1 * np.outer(Phi_DFT[:, 0], Phi_DFT[:, 1])
 
-    Y, W = tgsd(mat['X'], Psi_GFT, ram, mat['mask'], iterations=100, k=7, lambda_1=.1, lambda_2=.1, lambda_3=1,
-                rho_1=.01, rho_2=.01, type="rand")
+    #Y, W = tgsd(mat['X'], Psi_GFT, ram, mat['mask'], iterations=100, k=7, lambda_1=.1, lambda_2=.1, lambda_3=1,
+    #            rho_1=.01, rho_2=.01, type="rand")
 
-    pred_matrix = Psi_GFT @ Y @ W @ Phi_DFT
-    find_outlier(mat['X'], Psi_GFT, Y, W, Phi_DFT, .1, 25)
+    #pred_matrix = Psi_GFT @ Y @ W @ Phi_DFT
+    #find_outlier(mat['X'], Psi_GFT, Y, W, Phi_DFT, .1, 25)
     # find_row_outlier(mat['X'], Psi_GFT, Y, W, Phi_DFT, 10)
     # find_col_outlier(mat['X'], Psi_GFT, Y, W, Phi_DFT, 10)
-    print(pred_matrix)
+    #print(pred_matrix)
+    #config_run()
