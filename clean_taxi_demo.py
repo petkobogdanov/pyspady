@@ -1,4 +1,6 @@
 import calendar
+import csv
+from clustering import cluster
 
 import pandas as pd
 import numpy
@@ -10,6 +12,8 @@ from shapely.geometry import Point
 from shapely import wkt
 
 from tgsd import tgsd, gen_gft_new, gen_rama, find_outlier, find_col_outlier, find_row_outlier
+from mdtd import mdtm, mdtm_load_config, mdtd_format_numpy_to_csv, mdtd_format_csv_to_numpy
+
 import matplotlib.pyplot as plt
 import datetime
 from datetime import datetime, timedelta
@@ -47,16 +51,11 @@ def load_lat_long():
 
 def clean_taxi(month, method, perspective, mapping, tensor):
     cols = ['PULocationID', 'DOLocationID', 'formatted_time']
-    if month < 10:
-        month_st = "0" + str(month)
-    else:
-        month_st = str(month)
-
+    month_st = "0" + str(month) if month < 10 else str(month)
     all_data = pd.read_csv(f'Taxi_prep/tensor_data/sec_yellow_tripdata_2017-{month_st}', header=None, usecols=[1, 2, 3],
                            names=cols)
 
     # Convert formatted_time to datetime, adjust to time_bin
-
     all_data['time_bin'] = pd.to_timedelta(all_data['formatted_time'], unit='s') + pd.to_datetime('2017-01-01')
     all_data['time_bin'] = all_data['time_bin'].dt.floor('H')
 
@@ -68,58 +67,83 @@ def clean_taxi(month, method, perspective, mapping, tensor):
         end_days = "31"
 
     date_range = pd.date_range(start=f'2017-{month_st}-01', end=f'2017-{month_st}-{end_days} 23:00:00', freq='H')
+    num_locations = 265  # Total number of unique locations
 
-    if method == "pickup" and not tensor:
-        aggregated_data = all_data.groupby(['time_bin', 'PULocationID']).size().reset_index(name='trip_count')
-        pivot_table = aggregated_data.pivot(index='time_bin', columns='PULocationID', values='trip_count')
+    if not tensor:
+        if method == "pickup":
+            aggregated_data = all_data.groupby(['time_bin', 'PULocationID']).size().reset_index(name='trip_count')
+            pivot_table = aggregated_data.pivot(index='time_bin', columns='PULocationID', values='trip_count')
+        if method == "dropoff":
+            aggregated_data = all_data.groupby(['time_bin', 'DOLocationID']).size().reset_index(name='trip_count')
+            pivot_table = aggregated_data.pivot(index='time_bin', columns='DOLocationID', values='trip_count')
 
-    elif method == "dropoff" and not tensor:
-        aggregated_data = all_data.groupby(['time_bin', 'DOLocationID']).size().reset_index(name='trip_count')
-        pivot_table = aggregated_data.pivot(index='time_bin', columns='DOLocationID', values='trip_count')
+        pivot_table = pivot_table.reindex(date_range, fill_value=0).reindex(columns=np.arange(1, 266), fill_value=0)
+        pivot_table.fillna(0, inplace=True)
+        pivot_table_array = pivot_table.values.T
 
-    if method == "both" and tensor:
-        pickup_data = all_data.groupby(['time_bin', 'PULocationID']).size().reset_index(name='trip_count')
+        d = numpy.array(pivot_table_array)
+        total_pickups_by_location = aggregated_data.groupby('PULocationID')['trip_count'].sum() if method == "pickup" else \
+            aggregated_data.groupby('DOLocationID')['trip_count'].sum()
+        adj_matrix = np.zeros((num_locations, num_locations))
+
+        for i in range(1, num_locations + 1):
+            for j in range(1, num_locations + 1):
+                pickups_i = total_pickups_by_location.get(i, 0)
+                pickups_j = total_pickups_by_location.get(j, 0)
+                adj_matrix[i - 1, j - 1] = pickups_i + pickups_j if i != j else pickups_i
+
+        Psi_GFT = gen_gft_new(adj_matrix, False)
+        Psi_GFT = Psi_GFT[0]  # eigenvectors
+        ram = gen_rama(t=d.shape[1], max_period=24)  # 200x10
+        mask = np.random.randint(0, 65536, size=(1, 3500), dtype=np.uint16)
+        Y, W = tgsd(d, Psi_GFT, ram, mask, iterations=100, k=7, lambda_1=.1, lambda_2=.1, lambda_3=1,
+                    rho_1=.01, rho_2=.01, type="rand")
+
+        if perspective == "point":
+            find_outlier(d, Psi_GFT, Y, W, ram, .1, 30, p_month=month)
+        elif perspective == "row":
+            find_row_outlier(d, Psi_GFT, Y, W, ram, 10, p_month=month, p_method=method)
+        else:
+            find_col_outlier(d, Psi_GFT, Y, W, ram, 10, p_month=month, p_method=method)
+
+        cluster(Psi_GFT, Y)
+
+    else:
+        pickup_data = all_data.groupby(['time_bin', 'PULocationID']).size().reset_index(name='pickup_count')
         pickup_pivot = pickup_data.pivot(index='time_bin', columns='PULocationID', values='pickup_count')
+
         dropoff_data = all_data.groupby(['time_bin', 'DOLocationID']).size().reset_index(name='dropoff_count')
         dropoff_pivot = dropoff_data.pivot(index='time_bin', columns='DOLocationID', values='dropoff_count')
+
         pickup_pivot = pickup_pivot.reindex(date_range, fill_value=0).reindex(columns=np.arange(1, 266), fill_value=0)
         dropoff_pivot = dropoff_pivot.reindex(date_range, fill_value=0).reindex(columns=np.arange(1, 266), fill_value=0)
+        pickup_pivot.fillna(0, inplace=True)
+        dropoff_pivot.fillna(0, inplace=True)
+
         pickup_array = pickup_pivot.values.T
         dropoff_array = dropoff_pivot.values.T
-        tensor_3d = np.stack([pickup_array, dropoff_array], axis=-1)
+        d = np.stack([pickup_array, dropoff_array], axis=-1)
 
-    pivot_table = pivot_table.reindex(date_range, fill_value=0).reindex(columns=np.arange(1, 266), fill_value=0)
-    pivot_table.fillna(0, inplace=True)
-    pivot_table_array = pivot_table.values.T
-    d = numpy.array(pivot_table_array)
+        total_pickups_by_location = pickup_data.groupby('PULocationID')['pickup_count'].sum()
+        total_dropoffs_by_location = dropoff_data.groupby('DOLocationID')['dropoff_count'].sum()
 
-    # Initialize a square matrix of zeros
-    num_locations = 265  # Total number of unique locations
-    adj_matrix = np.zeros((num_locations, num_locations))
+        # TODO
+        adj_matrix_pickup = np.zeros((num_locations, num_locations))
+        adj_matrix_dropoff = np.zeros((num_locations, num_locations))
+        for i in range(1, num_locations + 1):
+            for j in range(1, num_locations + 1):
+                pickups_i = total_pickups_by_location.get(i, 0)
+                pickups_j = total_pickups_by_location.get(j, 0)
+                adj_matrix_pickup[i - 1, j - 1] = pickups_i + pickups_j if i != j else pickups_i
 
-    total_pickups_by_location = aggregated_data.groupby('PULocationID')['trip_count'].sum() if method == "pickup" else \
-        aggregated_data.groupby('DOLocationID')['trip_count'].sum()
+        for i in range(1, num_locations + 1):
+            for j in range(1, num_locations + 1):
+                dropoffs_i = total_dropoffs_by_location.get(i, 0)
+                dropoffs_j = total_dropoffs_by_location.get(j, 0)
+                adj_matrix_dropoff[i - 1, j - 1] = dropoffs_i + dropoffs_j if i != j else dropoffs_i
 
-    for i in range(1, num_locations + 1):
-        for j in range(1, num_locations + 1):
-            pickups_i = total_pickups_by_location.get(i, 0)
-            pickups_j = total_pickups_by_location.get(j, 0)
-            adj_matrix[i - 1, j - 1] = pickups_i + pickups_j if i != j else pickups_i
-
-    Psi_GFT = gen_gft_new(adj_matrix, False)
-    Psi_GFT = Psi_GFT[0]  # eigenvectors
-    ram = gen_rama(t=d.shape[1], max_period=24)  # 200x10
-    mask = np.random.randint(0, 65536, size=(1, 3500), dtype=np.uint16)
-    Y, W = tgsd(d, Psi_GFT, ram, mask, iterations=100, k=7, lambda_1=.1, lambda_2=.1, lambda_3=1,
-                rho_1=.01, rho_2=.01, type="rand")
-
-    if perspective == "point":
-        find_outlier(d, Psi_GFT, Y, W, ram, .1, 30, p_month=month)
-    elif perspective == "row":
-        find_row_outlier(d, Psi_GFT, Y, W, ram, 10, p_month=month, p_method=method)
-    else:
-        find_col_outlier(d, Psi_GFT, Y, W, ram, 10, p_month=month, p_method=method)
-
+        X, adj_1, adj_2, mask, count_nnz, num_iters_check, lam, K, epsilon = mdtm_load_config()
+        mdtm(is_syn=False, X=X, adj1=adj_1, adj2=adj_2, mask=mask, count_nnz=count_nnz, num_iters_check=num_iters_check, lam=lam, K=K, epsilon=epsilon)
 
 def find_outlier(p_X, p_Psi, p_Y, p_W, p_Phi, p_percentage, p_count, p_month) -> None:
     """
@@ -505,14 +529,11 @@ def find_col_outlier(p_X, p_Psi, p_Y, p_W, p_Phi, p_count, p_month, p_method):
         ax_compare.grid(True)
 
     # Adjust as needed for visualization
-    plt.title("Anti-Anomaly vs. Anomaly Behavior")
     plt.subplots_adjust(hspace=0.5, bottom=0.1, right=0.9)
     plt.show()
-
-
 load_taxi_data = load_lat_long()
 mapping = load_taxi_data['Id_and_lat_long']
 # Month = Integer value of month, [1,12]]
 # Method = "pickup" or "dropoff"
 # Perspective = "point" or "row" or "column"
-clean_taxi(month=7, method="pickup", perspective="col", mapping=mapping, tensor=False)
+clean_taxi(month=7, method="both", perspective="col", mapping=mapping, tensor=True)
