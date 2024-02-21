@@ -9,7 +9,6 @@ import math
 import ast
 from math import gcd, pi
 
-import numpy
 import numpy as np
 import scipy.io
 import tensorly as tl
@@ -104,7 +103,7 @@ def mdtm(is_syn: bool, X, adj1, adj2, mask, count_nnz=10, num_iters_check=0, lam
         return syn_lambda, syn_rho
 
     def mttkrp(p_D, p_PhiY, p_n):
-        return tl.unfold(p_D, mode=p_n) @ tl.tenalg.khatri_rao([p_PhiY[i] for i in range(len(p_PhiY)) if i != p_n])
+        return tl.unfold(p_D, mode=p_n).astype('float32') @ tl.tenalg.khatri_rao([p_PhiY[i].astype('float32') for i in range(len(p_PhiY)) if i != p_n])
 
     def nd_index(index, shape):
         indices = [0] * len(shape)
@@ -135,10 +134,12 @@ def mdtm(is_syn: bool, X, adj1, adj2, mask, count_nnz=10, num_iters_check=0, lam
             if mode == 0 or mode == 1:
                 nested_dictionary = gen_gft_new(adj1, False)[0] if mode == 0 else gen_gft_new(adj2, False)[0]
             else:
-                nested_dictionary = gen_rama(t=X.shape[1], max_period=24)
+                nested_dictionary = gen_rama(t=X.shape[2], max_period=24)
+            # What is the best choice of Phi dictionary shapes here?
             phi_d[0, mode] = nested_dictionary
 
-        phi_type = [random.choice(['not_ortho_dic', 'ortho_dic', 'no_dic']) for _ in range(num_modes)]
+        #phi_type = [random.choice(['not_ortho_dic', 'ortho_dic', 'no_dic']) for _ in range(num_modes)]
+        phi_type = ['not_ortho_dic', 'ortho_dic', 'no_dic']
         P = np.empty((1, num_modes), dtype=object)
 
         for i in range(phi_d.shape[1]):
@@ -161,7 +162,7 @@ def mdtm(is_syn: bool, X, adj1, adj2, mask, count_nnz=10, num_iters_check=0, lam
     normalize_scaling = np.ones(K)
     dimensions = X.shape
     mask_complex = 1
-    if mask and mask_complex == 1:
+    if ((isinstance(mask, np.ndarray) and mask.any()) or (isinstance(mask, list) and len(mask) > 0)) and mask_complex == 1:
         double_X = X.astype(np.longdouble)
 
     np.random.seed(6)
@@ -243,7 +244,7 @@ def mdtm(is_syn: bool, X, adj1, adj2, mask, count_nnz=10, num_iters_check=0, lam
 
             elif phi_type[n] == "no_dic":
                 Y[n] = mttkrp(D, PhiY, n)
-                # inversion_product_vector = np.prod(YPhi_Inner[:, :, list(range(n)) + list(range(n + 1, num_modes))], axis=2)
+                #inversion_product_vector = np.prod(YPhi_Inner[:, :, list(range(n)) + list(range(n + 1, num_modes))], axis=2)
                 Y[n] = np.linalg.solve(
                     (np.prod(YPhi_Inner[:, :, list(range(n)) + list(range(n + 1, num_modes))], axis=2)).T, Y[n].T).T
                 normalize_scaling = np.sqrt(np.sum(Y[n] ** 2, axis=0)).reshape(-1, 1).T if i == 1 else np.maximum(
@@ -264,8 +265,8 @@ def mdtm(is_syn: bool, X, adj1, adj2, mask, count_nnz=10, num_iters_check=0, lam
                     nnz = nnz + np.count_nonzero(Z[m])
                 objs[i - 1, 2] = nnz
 
-        if len(mask) > 0:
-            mask = np.array(mask)
+        if (isinstance(mask, list) and len(mask) > 0) or (isinstance(mask, np.ndarray) and mask.any()):
+            if isinstance(mask, list): mask = np.array(mask)
             # set D to reconstructed values and cast to double for mask indexing
             recon_t = tl.kruskal_to_tensor(
                 (normalize_scaling.reshape((normalize_scaling.shape[1],)), [matrix for matrix in PhiY]))
@@ -273,9 +274,11 @@ def mdtm(is_syn: bool, X, adj1, adj2, mask, count_nnz=10, num_iters_check=0, lam
 
             missing_mask, observed_mask = np.zeros(double_X.shape), np.ones(double_X.shape)
 
-            for idx in mask:
-                nd_idx = nd_index(idx, double_X.shape)  # Convert index to correct tuple
-                missing_mask[nd_idx] = 1
+            #for idx in mask:
+            #    nd_idx = nd_index(idx, double_X.shape)  # Convert index to correct tuple
+            #    missing_mask[nd_idx] = 1
+            nd_indices = np.unravel_index(mask, double_X.shape)
+            missing_mask[nd_indices] = 1
 
             # d = (recon_t(:) + lambda * X(:)) * inv(1 + lambda)
             # D(setDifference) = d
@@ -516,7 +519,7 @@ def mdtm_load_config():
     def build_adj_matrix(p_path, p_dim):
         adj_data = np.loadtxt(p_path, delimiter=',', dtype=int)
         rows, cols = adj_data[:, 0], adj_data[:, 1]
-        return sp.csc_matrix((np.ones_like(rows), (rows, cols)), shape=(p_dim, p_dim))
+        return sp.csc_matrix((np.ones_like(rows-1), (rows-1, cols-1)), shape=(p_dim, p_dim))
 
     with open('mdtm_config.json', 'r') as file:
         config = json.load(file)
@@ -528,12 +531,15 @@ def mdtm_load_config():
         if config['adj-1']:
             adj_1 = build_adj_matrix(config["adj-1"], X.shape[0])
         if config['adj-2']:
-            adj_2 = build_adj_matrix(config["adj-2"], X.shape[0])
+            adj_2 = build_adj_matrix(config["adj-2"], X.shape[1])
 
     mask_percentage = config["mask_percentage_random"]
-    num_to_mask = int(np.prod(X.shape) * (mask_percentage / 100.0))
-    all_indices = np.arange(np.prod(X.shape))
-    mask = np.random.choice(all_indices, num_to_mask, replace=False)
+    if mask_percentage > 0:
+        num_to_mask = int(np.prod(X.shape) * (mask_percentage / 100.0))
+        all_indices = np.arange(np.prod(X.shape))
+        mask = np.random.choice(all_indices, num_to_mask, replace=False)
+    else:
+        mask = np.array([])
 
     # The rest of the configuration parameters
     count_nnz = config['count_nnz']
@@ -566,14 +572,23 @@ def mdtd_format_csv_to_numpy(p_data_csv):
     max_row = df['Row'].max() + 1
     max_col = df['Column'].max() + 1
     max_depth = df['Depth'].max() + 1
-    reconstructed_array = np.empty((max_row, max_col, max_depth))
-    for _, row in df.iterrows():
-        reconstructed_array[int(row['Row']), int(row['Column']), int(row['Depth'])] = row['Value']
+
+    # Initialize the numpy array with NaNs or another placeholder value
+    reconstructed_array = np.full((max_row, max_col, max_depth), np.nan, dtype=np.longdouble)
+
+    # Use pandas to extract the row, column, and depth indices and the corresponding values
+    rows = df['Row'].values
+    cols = df['Column'].values
+    depths = df['Depth'].values
+    values = df['Value'].values
+
+    # Use advanced indexing to set the values directly
+    reconstructed_array[rows, cols, depths] = values
+
     return reconstructed_array
 
 if __name__ == '__main__':
-    print('hello')
     #mdtm_input_x, mdtm_input_adj, mdtm_input_mask, mdtm_input_count_nnz, mdtm_input_num_iters_check, mdtm_input_lam, mdtm_input_K, mdtm_input_epsilon = mdtm_load_config()
-    #mdtm_X, recon_X = mdtm(is_syn=True, X=None, adj=None, mask=[], count_nnz=0, num_iters_check=10, lam=0.000001, K=10,
-    #                       epsilon=1e-4)
+    mdtm_X, recon_X = mdtm(is_syn=True, X=None, adj1=None, adj2=None, mask=[], count_nnz=0, num_iters_check=10, lam=0.000001, K=10,
+                           epsilon=1e-4)
     #mdtm_find_outlier(mdtm_X, recon_X, 10)

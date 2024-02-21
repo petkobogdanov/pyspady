@@ -3,7 +3,6 @@ import csv
 from clustering import cluster
 
 import pandas as pd
-import numpy
 import numpy as np
 import scipy.io
 import geopandas as gpd
@@ -26,11 +25,9 @@ from geopy.extra.rate_limiter import RateLimiter
 
 # Initialize Nominatim API
 geolocator = Photon(user_agent="measurements")
-
-# To prevent spamming the service, wrap the geolocator with a rate limiter
 geocode = RateLimiter(geolocator.geocode, min_delay_seconds=0.5)
-
 transformer = Transformer.from_crs("EPSG:4326", "EPSG:3857", always_xy=True)
+
 nyc_bounds_wgs84 = {
     'west': -74.255735,
     'south': 40.496044,
@@ -49,7 +46,48 @@ def load_lat_long():
     return scipy.io.loadmat("Taxi_prep/lat_long_info.mat")
 
 
-def clean_taxi(month, method, perspective, mapping, tensor):
+def clean_taxi(month, method, perspective, mapping):
+
+    def generate_pickup_or_dropoff_adj(adj_matrix, all_data, method, date_range):
+        if method == "pickup":
+            aggregated_data = all_data.groupby(['time_bin', 'PULocationID']).size().reset_index(name='trip_count')
+            pivot_table = aggregated_data.pivot(index='time_bin', columns='PULocationID', values='trip_count')
+            trip_counts = all_data.groupby(['PULocationID', 'DOLocationID']).size().reset_index(name='trip_count')
+            adj_matrix[trip_counts['PULocationID'] - 1, trip_counts['DOLocationID'] - 1] = trip_counts['trip_count']
+        elif method == "dropoff":
+            aggregated_data = all_data.groupby(['time_bin', 'DOLocationID']).size().reset_index(name='trip_count')
+            pivot_table = aggregated_data.pivot(index='time_bin', columns='DOLocationID', values='trip_count')
+            trip_counts = all_data.groupby(['DOLocationID', 'PULocationID']).size().reset_index(name='trip_count')
+            adj_matrix[trip_counts['DOLocationID'] - 1, trip_counts['PULocationID'] - 1] = trip_counts['trip_count']
+
+        adj_matrix += adj_matrix.T
+        np.fill_diagonal(adj_matrix, adj_matrix.diagonal() // 2)
+
+        pivot_table = pivot_table.reindex(date_range, fill_value=0).reindex(columns=np.arange(1, 266), fill_value=0)
+        pivot_table.fillna(0, inplace=True)
+        return np.array(pivot_table.values.T), adj_matrix
+
+    def extract_adj_matrix_csv(adj_matrix, pickup_or_dropoff):
+        rows, cols = np.nonzero(adj_matrix)
+        data = list(zip(rows + 1, cols + 1))  # Adding 1 to convert from 0-based to 1-based indexing, if necessary
+        df_nonzero = pd.DataFrame(data, columns=['r', 'c'])
+        df_nonzero.to_csv(f'{pickup_or_dropoff}_adjacency.csv', index=False, header=False)
+
+    def extract_tensor_csv(all_data, date_range, num_locations):
+        time_bins = all_data['time_bin'].sort_values().unique()
+        time_bin_to_index = {time: index for index, time in enumerate(time_bins)}
+        all_data['time_index'] = all_data['time_bin'].apply(lambda x: time_bin_to_index[x])
+        trip_counts = all_data.groupby(['PULocationID', 'DOLocationID', 'time_index']).size().reset_index(name='count')
+        shape = (num_locations, num_locations * len(date_range))
+        trip_counts['PULocationID'] -= 1
+        trip_counts['DOLocationID'] -= 1
+        row = trip_counts['PULocationID']
+        col = trip_counts['DOLocationID'] * len(date_range) + trip_counts['time_index']
+        data = trip_counts['count']
+        sparse_matrix = scipy.sparse.coo_matrix((data, (row, col)), shape=shape)
+        tensor = sparse_matrix.toarray().reshape((num_locations, num_locations, len(date_range)))
+        mdtd_format_numpy_to_csv(tensor)
+
     cols = ['PULocationID', 'DOLocationID', 'formatted_time']
     month_st = "0" + str(month) if month < 10 else str(month)
     all_data = pd.read_csv(f'Taxi_prep/tensor_data/sec_yellow_tripdata_2017-{month_st}', header=None, usecols=[1, 2, 3],
@@ -59,42 +97,18 @@ def clean_taxi(month, method, perspective, mapping, tensor):
     all_data['time_bin'] = pd.to_timedelta(all_data['formatted_time'], unit='s') + pd.to_datetime('2017-01-01')
     all_data['time_bin'] = all_data['time_bin'].dt.floor('H')
 
-    if month_st == "02":
-        end_days = "28"
-    elif month_st == "09" or month_st == "11" or month_st == "04" or month_st == "06":
-        end_days = "30"
-    else:
-        end_days = "31"
+    end_days_map = {"02": "28", "04": "30", "06": "30", "09": "30", "11": "30"}
+    end_days = end_days_map.get(month_st, "31")
 
     date_range = pd.date_range(start=f'2017-{month_st}-01', end=f'2017-{month_st}-{end_days} 23:00:00', freq='H')
     num_locations = 265  # Total number of unique locations
+    adj_template = np.zeros((num_locations, num_locations), dtype=int)
 
-    if not tensor:
-        if method == "pickup":
-            aggregated_data = all_data.groupby(['time_bin', 'PULocationID']).size().reset_index(name='trip_count')
-            pivot_table = aggregated_data.pivot(index='time_bin', columns='PULocationID', values='trip_count')
-        if method == "dropoff":
-            aggregated_data = all_data.groupby(['time_bin', 'DOLocationID']).size().reset_index(name='trip_count')
-            pivot_table = aggregated_data.pivot(index='time_bin', columns='DOLocationID', values='trip_count')
-
-        pivot_table = pivot_table.reindex(date_range, fill_value=0).reindex(columns=np.arange(1, 266), fill_value=0)
-        pivot_table.fillna(0, inplace=True)
-        pivot_table_array = pivot_table.values.T
-
-        d = numpy.array(pivot_table_array)
-        total_pickups_by_location = aggregated_data.groupby('PULocationID')['trip_count'].sum() if method == "pickup" else \
-            aggregated_data.groupby('DOLocationID')['trip_count'].sum()
-        adj_matrix = np.zeros((num_locations, num_locations))
-
-        for i in range(1, num_locations + 1):
-            for j in range(1, num_locations + 1):
-                pickups_i = total_pickups_by_location.get(i, 0)
-                pickups_j = total_pickups_by_location.get(j, 0)
-                adj_matrix[i - 1, j - 1] = pickups_i + pickups_j if i != j else pickups_i
-
+    if method == "pickup" or method == "dropoff":
+        d, adj_matrix = generate_pickup_or_dropoff_adj(adj_template, all_data, method, date_range)
         Psi_GFT = gen_gft_new(adj_matrix, False)
         Psi_GFT = Psi_GFT[0]  # eigenvectors
-        ram = gen_rama(t=d.shape[1], max_period=24)  # 200x10
+        ram = gen_rama(t=d.shape[1], max_period=24)  # t = 2nd dim of Ramanujan dictionary
         mask = np.random.randint(0, 65536, size=(1, 3500), dtype=np.uint16)
         Y, W = tgsd(d, Psi_GFT, ram, mask, iterations=100, k=7, lambda_1=.1, lambda_2=.1, lambda_3=1,
                     rho_1=.01, rho_2=.01, type="rand")
@@ -109,41 +123,16 @@ def clean_taxi(month, method, perspective, mapping, tensor):
         cluster(Psi_GFT, Y)
 
     else:
-        pickup_data = all_data.groupby(['time_bin', 'PULocationID']).size().reset_index(name='pickup_count')
-        pickup_pivot = pickup_data.pivot(index='time_bin', columns='PULocationID', values='pickup_count')
-
-        dropoff_data = all_data.groupby(['time_bin', 'DOLocationID']).size().reset_index(name='dropoff_count')
-        dropoff_pivot = dropoff_data.pivot(index='time_bin', columns='DOLocationID', values='dropoff_count')
-
-        pickup_pivot = pickup_pivot.reindex(date_range, fill_value=0).reindex(columns=np.arange(1, 266), fill_value=0)
-        dropoff_pivot = dropoff_pivot.reindex(date_range, fill_value=0).reindex(columns=np.arange(1, 266), fill_value=0)
-        pickup_pivot.fillna(0, inplace=True)
-        dropoff_pivot.fillna(0, inplace=True)
-
-        pickup_array = pickup_pivot.values.T
-        dropoff_array = dropoff_pivot.values.T
-        d = np.stack([pickup_array, dropoff_array], axis=-1)
-
-        total_pickups_by_location = pickup_data.groupby('PULocationID')['pickup_count'].sum()
-        total_dropoffs_by_location = dropoff_data.groupby('DOLocationID')['dropoff_count'].sum()
-
-        # TODO
-        adj_matrix_pickup = np.zeros((num_locations, num_locations))
-        adj_matrix_dropoff = np.zeros((num_locations, num_locations))
-        for i in range(1, num_locations + 1):
-            for j in range(1, num_locations + 1):
-                pickups_i = total_pickups_by_location.get(i, 0)
-                pickups_j = total_pickups_by_location.get(j, 0)
-                adj_matrix_pickup[i - 1, j - 1] = pickups_i + pickups_j if i != j else pickups_i
-
-        for i in range(1, num_locations + 1):
-            for j in range(1, num_locations + 1):
-                dropoffs_i = total_dropoffs_by_location.get(i, 0)
-                dropoffs_j = total_dropoffs_by_location.get(j, 0)
-                adj_matrix_dropoff[i - 1, j - 1] = dropoffs_i + dropoffs_j if i != j else dropoffs_i
+        # _, adj_matrix_pickup = pickup_or_dropoff(adj_template, all_data, "pickup", date_range)
+        # _, adj_matrix_dropoff = pickup_or_dropoff(adj_template, all_data, "dropoff", date_range)
+        # extract_adj_matrix_csv(adj_matrix_dropoff, "dropoff")
+        # extract_adj_matrix_csv(adj_matrix_pickup, "pickup")
+        # extract_tensor_csv(all_data, date_range, num_locations)
 
         X, adj_1, adj_2, mask, count_nnz, num_iters_check, lam, K, epsilon = mdtm_load_config()
-        mdtm(is_syn=False, X=X, adj1=adj_1, adj2=adj_2, mask=mask, count_nnz=count_nnz, num_iters_check=num_iters_check, lam=lam, K=K, epsilon=epsilon)
+        mdtm(is_syn=False, X=X, adj1=adj_1, adj2=adj_2, mask=mask, count_nnz=count_nnz, num_iters_check=num_iters_check,
+             lam=lam, K=K, epsilon=epsilon)
+
 
 def find_outlier(p_X, p_Psi, p_Y, p_W, p_Phi, p_percentage, p_count, p_month) -> None:
     """
@@ -477,7 +466,7 @@ def find_col_outlier(p_X, p_Psi, p_Y, p_W, p_Phi, p_count, p_month, p_method):
 
         # Set y-axis
         ax.set_ylim(min(np.min(magnitude_X[:, col_idx]), np.min(reconstructed_X[:, col_idx])),
-                            max(np.max(magnitude_X[:, col_idx]), np.max(reconstructed_X[:, col_idx])))
+                    max(np.max(magnitude_X[:, col_idx]), np.max(reconstructed_X[:, col_idx])))
         date_time_for_index = datetime(2017, p_month, 1) + timedelta(hours=int(col_idx))
 
         ax.set_title(f"Day/Time: {date_time_for_index.strftime('%B %d, %Y, %H:%M')}")
@@ -531,9 +520,11 @@ def find_col_outlier(p_X, p_Psi, p_Y, p_W, p_Phi, p_count, p_month, p_method):
     # Adjust as needed for visualization
     plt.subplots_adjust(hspace=0.5, bottom=0.1, right=0.9)
     plt.show()
+
+
 load_taxi_data = load_lat_long()
 mapping = load_taxi_data['Id_and_lat_long']
 # Month = Integer value of month, [1,12]]
-# Method = "pickup" or "dropoff"
+# Method = "pickup" or "dropoff" or "both"
 # Perspective = "point" or "row" or "column"
-clean_taxi(month=7, method="both", perspective="col", mapping=mapping, tensor=True)
+clean_taxi(month=5, method="pickup", perspective="row", mapping=mapping)
