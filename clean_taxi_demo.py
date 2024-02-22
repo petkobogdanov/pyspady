@@ -367,30 +367,38 @@ def find_row_outlier(p_X, p_Psi, p_Y, p_W, p_Phi, p_count, p_month, p_method):
     proper_outlier = gpd.GeoDataFrame(pd.concat([proper_outlier, add_these_separately_gdf], ignore_index=True),
                                       crs="EPSG:4326")
 
-    # !!! Plot coordinate points
-    proper_outlier.to_crs(epsg=3857).plot(ax=ax, marker='o', color='red', markersize=50)
+    # Find all unique zones
+    unique_names = proper_outlier['Name'].dropna().unique()
+    unique_zones = proper_outlier['Zone'].dropna().unique()
+    all_unique_zones = np.concatenate((unique_names, unique_zones))
+    # Subplot 1: Plotting Locations of Outliers on Map of NYC
+    # Plot zones to colors
+    colors = plt.colormaps['hsv']
+    gen_unique_colors = [colors(i / len(all_unique_zones)) for i in range(len(all_unique_zones))]
+    zone_color_map = {zone: gen_unique_colors[i] for i, zone in enumerate(all_unique_zones)}
 
-    # Sets bounds of the plot to NYC coordinates
+    # Convert CRS
+    proper_outlier = proper_outlier.to_crs(epsg=3857)
+
+    # Plot locations on map of NYC
+    for idx, row in proper_outlier.iterrows():
+        zone_name = row.Name if pd.notnull(row['Name']) else row.Zone
+        color = zone_color_map[zone_name]
+        ax.plot(row.geometry.x, row.geometry.y, 'o', color=color, markersize=10, label=zone_name)
+
+    # Base map, bounds, and other settings
     ax.set_xlim([nyc_bounds_mercator['west'], nyc_bounds_mercator['east']])
     ax.set_ylim([nyc_bounds_mercator['south'], nyc_bounds_mercator['north']])
-
-    # Base map of NYC
     ctx.add_basemap(ax, source=ctx.providers.OpenStreetMap.Mapnik)
-
-    ax.set_axis_off()  # Remove axis for a cleaner map
+    ax.set_axis_off()
     m = calendar.month_name[p_month]
     s = "NYC Taxi Pickups" if p_method == "pickup" else "NYC Taxi Dropoffs"
     ax.set_title(f"{m} {s}")
     ax.set_aspect('equal')
-
-    # Annotations
-    for idx, row in proper_outlier.iterrows():
-        x, y = row.geometry.x, row.geometry.y
-        zone_name = row.Name if row.Name is not None else row.Zone
-        # Add annotation with a small offset from the point
-        ax.annotate(zone_name, xy=(x, y), xytext=(x, y), textcoords="offset points",
-                    fontsize=12, ha='left', va='bottom',
-                    bbox=dict(boxstyle="round,pad=0.5", facecolor='white', edgecolor='black', alpha=0.9))
+    # Only plot unique labels
+    handles, labels = plt.gca().get_legend_handles_labels()
+    by_label = dict(zip(labels, handles))  # This removes duplicates
+    plt.legend(by_label.values(), by_label.keys(), loc='best', fontsize=8)
 
     # Iterate through each row index to build grid
     for i, row_idx in enumerate(outlier_rows):
