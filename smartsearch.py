@@ -78,7 +78,7 @@ for params in param_sampler:
     print(f"Best coefficient%={best_coefficient_score} | Best residual%={best_residual_score}")
 
     if residual_percentage < residual_threshold and coefficient_percentage < coefficient_threshold:
-        print(f"Early stopping at residual score {residual_percentage} and coefficient score {coefficient_percentage} with parameters {params}"
+        print(f"Early stopping at residual score {residual_percentage} and coefficient score {coefficient_percentage} with parameters {params}")
         found = True
         break
 

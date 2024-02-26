@@ -11,7 +11,7 @@ from shapely.geometry import Point
 from shapely import wkt
 
 from tgsd import tgsd, gen_gft_new, gen_rama, find_outlier, find_col_outlier, find_row_outlier
-from mdtd import mdtm, mdtm_load_config, mdtd_format_numpy_to_csv, mdtd_format_csv_to_numpy
+from mdtd import mdtd, mdtd_load_config, mdtd_format_numpy_to_csv, mdtd_format_csv_to_numpy, mdtd_find_outlier, mdtd_clustering
 
 import matplotlib.pyplot as plt
 import datetime
@@ -46,7 +46,7 @@ def load_lat_long():
     return scipy.io.loadmat("Taxi_prep/lat_long_info.mat")
 
 
-def clean_taxi(month, method, perspective, mapping):
+def clean_taxi(month, method, perspective):
 
     def generate_pickup_or_dropoff_adj(adj_matrix, all_data, method, date_range):
         if method == "pickup":
@@ -129,10 +129,17 @@ def clean_taxi(month, method, perspective, mapping):
         # extract_adj_matrix_csv(adj_matrix_pickup, "pickup")
         # extract_tensor_csv(all_data, date_range, num_locations)
 
-        X, adj_1, adj_2, mask, count_nnz, num_iters_check, lam, K, epsilon = mdtm_load_config()
-        mdtm(is_syn=False, X=X, adj1=adj_1, adj2=adj_2, mask=mask, count_nnz=count_nnz, num_iters_check=num_iters_check,
-             lam=lam, K=K, epsilon=epsilon)
+        X, adj_1, adj_2, mask, count_nnz, num_iters_check, lam, K, epsilon = mdtd_load_config()
+        return_X, recon_X, phi_y = mdtd(is_syn=False, X=X, adj1=adj_1, adj2=adj_2, mask=mask, count_nnz=count_nnz, num_iters_check=num_iters_check,
+                                 lam=lam, K=K, epsilon=epsilon)
+        if perspective == "row":
+            mdtd_find_outlier(return_X, recon_X, 10, "x")
+        elif perspective == "col":
+            mdtd_find_outlier(return_X, recon_X, 10, "y")
+        else:
+            mdtd_find_outlier(return_X, recon_X, 10, "z")
 
+        mdtd_clustering(phi_y, 7)
 
 def find_outlier(p_X, p_Psi, p_Y, p_W, p_Phi, p_percentage, p_count, p_month) -> None:
     """
@@ -535,4 +542,4 @@ mapping = load_taxi_data['Id_and_lat_long']
 # Month = Integer value of month, [1,12]]
 # Method = "pickup" or "dropoff" or "both"
 # Perspective = "point" or "row" or "column"
-clean_taxi(month=5, method="pickup", perspective="row", mapping=mapping)
+clean_taxi(month=5, method="both", perspective="row")

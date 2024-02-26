@@ -1,41 +1,15 @@
-import json
-import os
-import random
-import cmath
-import datetime
-from datetime import datetime, timedelta
-# import itertools
-import math
-import ast
-from math import gcd, pi
-
 import numpy as np
 import scipy.io
 import tensorly as tl
-import sparse
-from tensorly.contrib.sparse import tensor as sp_tensor
 import scipy.sparse as sp
-from scipy.fftpack import fft
-from scipy.stats import linregress
 import time
 import matplotlib.pyplot as plt
-from matplotlib import dates as mdates
-from matplotlib.cm import ScalarMappable
-from matplotlib.colors import Normalize
-from matplotlib.gridspec import GridSpec, GridSpecFromSubplotSpec
-from mpl_toolkits.mplot3d import Axes3D
-
-from Y_unittest import TestYConversion
-from W_unittest import TestWConversion
-
-from collections import defaultdict
-from scipy.sparse import spmatrix
-
 import json
 import pandas as pd
-import random
-import csv
-from tgsd import gen_gft_new, gen_rama, find_outlier, find_col_outlier, find_row_outlier
+from tgsd import gen_gft_new, gen_rama
+from sklearn.cluster import KMeans
+from mpl_toolkits.mplot3d import Axes3D
+from matplotlib import cm
 
 def load_syn_data() -> dict:
     """
@@ -43,9 +17,11 @@ def load_syn_data() -> dict:
     Returns:
         dict: dictionary with variable names as keys, and loaded matrices as values
     """
+
     def save_array(a, file):
         for i, a in enumerate(a):
             pd.DataFrame(a).to_csv(f"{file}_{i}.csv", index=False, header=False)
+
     def save_lists(l, file):
         for i, lst in enumerate(l):
             pd.DataFrame(lst).to_csv(f"{file}_{i}.csv", index=False, header=False)
@@ -64,6 +40,7 @@ def load_syn_data() -> dict:
     if 'PhiYg' in data:
         phiyg_arrays = [data['PhiYg'][0, i] for i in range(data['PhiYg'].shape[1])]
         save_array(phiyg_arrays, "PhiYg")
+
 
 def save_to_numpy_arrays():
     load_phi_array = []
@@ -92,7 +69,8 @@ def save_to_numpy_arrays():
 
     return phi_array, phi_yg_array, p_array_of_arrays
 
-def mdtm(is_syn: bool, X, adj1, adj2, mask, count_nnz=10, num_iters_check=0, lam=0.000001, K=10, epsilon=1e-4):
+
+def mdtd(is_syn: bool, X, adj1, adj2, mask, count_nnz=10, num_iters_check=0, lam=0.000001, K=10, epsilon=1e-4):
     def gen_syn_X(p_PhiYg):
         # Create a list of matrices from the cell array
         return tl.kruskal_to_tensor((np.ones(10), [matrix for matrix in p_PhiYg[0]]))
@@ -103,7 +81,9 @@ def mdtm(is_syn: bool, X, adj1, adj2, mask, count_nnz=10, num_iters_check=0, lam
         return syn_lambda, syn_rho
 
     def mttkrp(p_D, p_PhiY, p_n):
-        return tl.unfold(p_D, mode=p_n).astype('float32') @ tl.tenalg.khatri_rao([p_PhiY[i].astype('float32') for i in range(len(p_PhiY)) if i != p_n])
+        # Matricized tensor times Khatri-Rao product
+        return tl.unfold(p_D, mode=p_n).astype('float32') @ tl.tenalg.khatri_rao(
+            [p_PhiY[i].astype('float32') for i in range(len(p_PhiY)) if i != p_n])
 
     def nd_index(index, shape):
         indices = [0] * len(shape)
@@ -114,6 +94,7 @@ def mdtm(is_syn: bool, X, adj1, adj2, mask, count_nnz=10, num_iters_check=0, lam
         return tuple(indices)
 
     if is_syn:
+        # Generate synthetic data numpy arrays
         MDTD_Demo_Phi, MDTD_Demo_PhiYg, MDTD_Demo_P = save_to_numpy_arrays()
         X = gen_syn_X(MDTD_Demo_PhiYg)  # numpy array of x * y * z
         num_modes = X.ndim
@@ -135,11 +116,10 @@ def mdtm(is_syn: bool, X, adj1, adj2, mask, count_nnz=10, num_iters_check=0, lam
                 nested_dictionary = gen_gft_new(adj1, False)[0] if mode == 0 else gen_gft_new(adj2, False)[0]
             else:
                 nested_dictionary = gen_rama(t=X.shape[2], max_period=24)
-            # What is the best choice of Phi dictionary shapes here?
             phi_d[0, mode] = nested_dictionary
 
-        #phi_type = [random.choice(['not_ortho_dic', 'ortho_dic', 'no_dic']) for _ in range(num_modes)]
-        phi_type = ['not_ortho_dic', 'ortho_dic', 'no_dic']
+        # phi_type = [random.choice(['not_ortho_dic', 'ortho_dic', 'no_dic']) for _ in range(num_modes)]
+        phi_type = ['no_dic', 'ortho_dic', 'no_dic']
         P = np.empty((1, num_modes), dtype=object)
 
         for i in range(phi_d.shape[1]):
@@ -162,30 +142,27 @@ def mdtm(is_syn: bool, X, adj1, adj2, mask, count_nnz=10, num_iters_check=0, lam
     normalize_scaling = np.ones(K)
     dimensions = X.shape
     mask_complex = 1
-    if ((isinstance(mask, np.ndarray) and mask.any()) or (isinstance(mask, list) and len(mask) > 0)) and mask_complex == 1:
+    if ((isinstance(mask, np.ndarray) and mask.any()) or (
+            isinstance(mask, list) and len(mask) > 0)) and mask_complex == 1:
         double_X = X.astype(np.longdouble)
 
     np.random.seed(6)
 
     PhiPhiEV, PhiPhiLAM = [None] * num_modes, [None] * num_modes
     # dictionary decomposition
-
     for i in range(num_modes):
         if phi_type[i] == "not_ortho_dic":
             # U and V are unitary matrices and S contains singular values as a diagonal matrix
             U, S_non_diag, V_transpose = np.linalg.svd(phi_d[0, i])
             S = np.diag(S_non_diag)
             V = V_transpose.T
-            rows_v, cols_v = V.shape
             PhiPhiEV[i] = V
             retained_rank = min(phi_d[0, i].shape)
             # diag(S(1:retained_rank, 1:retained_rank)).^2
             PhiPhiLAM[i] = (np.diag(S[:retained_rank]) ** 2).reshape(-1, 1)
 
-    # 1:num_modes, @(x) isequal(sort(x), 1:num_modes)
     MAX_ITERS = 500
     # 1:num_modes, @(x) isequal(sort(x), 1:num_modes)
-    dimorder_check = lambda x: sorted(x) == list(range(1, num_modes + 1))
     dimorder = np.arange(1, num_modes + 1)
     gamma = [None] * num_modes
 
@@ -244,7 +221,7 @@ def mdtm(is_syn: bool, X, adj1, adj2, mask, count_nnz=10, num_iters_check=0, lam
 
             elif phi_type[n] == "no_dic":
                 Y[n] = mttkrp(D, PhiY, n)
-                #inversion_product_vector = np.prod(YPhi_Inner[:, :, list(range(n)) + list(range(n + 1, num_modes))], axis=2)
+                # inversion_product_vector = np.prod(YPhi_Inner[:, :, list(range(n)) + list(range(n + 1, num_modes))], axis=2)
                 Y[n] = np.linalg.solve(
                     (np.prod(YPhi_Inner[:, :, list(range(n)) + list(range(n + 1, num_modes))], axis=2)).T, Y[n].T).T
                 normalize_scaling = np.sqrt(np.sum(Y[n] ** 2, axis=0)).reshape(-1, 1).T if i == 1 else np.maximum(
@@ -274,15 +251,11 @@ def mdtm(is_syn: bool, X, adj1, adj2, mask, count_nnz=10, num_iters_check=0, lam
 
             missing_mask, observed_mask = np.zeros(double_X.shape), np.ones(double_X.shape)
 
-            #for idx in mask:
+            # for idx in mask:
             #    nd_idx = nd_index(idx, double_X.shape)  # Convert index to correct tuple
             #    missing_mask[nd_idx] = 1
             nd_indices = np.unravel_index(mask, double_X.shape)
             missing_mask[nd_indices] = 1
-
-            # d = (recon_t(:) + lambda * X(:)) * inv(1 + lambda)
-            # D(setDifference) = d
-
             D = ((observed_mask - missing_mask) * (recon_t + lam[0] * double_X)) / 1 + lam[0]
         else:
             D = X
@@ -315,9 +288,10 @@ def mdtm(is_syn: bool, X, adj1, adj2, mask, count_nnz=10, num_iters_check=0, lam
                 break
 
     # [[S ⊡ Φ1Y1, Φ2Y2, Φ3Y3]
-    return X, recon_t
+    return X, recon_t, PhiY
 
-def mdtm_find_outlier(p_X, p_recon, p_count, p_slice) -> None:
+
+def mdtd_find_outlier(p_X, p_recon, p_count, p_slice) -> None:
     """
     Plots outliers based on magnitude from the residual of p_X-(p_recon).
     Args:
@@ -325,6 +299,7 @@ def mdtm_find_outlier(p_X, p_recon, p_count, p_slice) -> None:
         p_recon: Reconstruction of p_X from S ⊡ Φ1Y1, Φ2Y2, Φ3Y3
         p_percentage: Top percentile of outliers that the user wishes to plot
         p_count: Number of subplots to display, one for each outlier in p_count. Maximum count of 10.
+        p_slice: x/y/z plane to visualize tensor.
     """
     # TODO
     outlier_indices = []
@@ -339,7 +314,6 @@ def mdtm_find_outlier(p_X, p_recon, p_count, p_slice) -> None:
             sorted_values = np.argsort(slice_flattened)[::-1]
             outlier_indices_fixed = sorted_values[:p_count]
             row_indices_fixed, col_indices_fixed = np.unravel_index(outlier_indices_fixed, p_X[:, :, i].shape)
-
 
             for r, c in zip(row_indices_fixed, col_indices_fixed):
                 outlier_indices.append((r, c, i))
@@ -400,7 +374,8 @@ def mdtm_find_outlier(p_X, p_recon, p_count, p_slice) -> None:
         z_range = np.arange(p_X.shape[2])
 
         Y_mesh, Z_mesh = np.meshgrid(y_range, z_range)
-        normalized_magnitudes = average_magnitude_per_slice[top_slices_indices] / np.max(average_magnitude_per_slice[top_slices_indices])
+        normalized_magnitudes = average_magnitude_per_slice[top_slices_indices] / np.max(
+            average_magnitude_per_slice[top_slices_indices])
 
         for i, slice_index in enumerate(outlier_indices_sorted_by_pane):
             X_mesh = np.full(Y_mesh.shape, slice_index)
@@ -432,7 +407,8 @@ def mdtm_find_outlier(p_X, p_recon, p_count, p_slice) -> None:
         z_range = np.arange(p_X.shape[2])
 
         X_mesh, Z_mesh = np.meshgrid(x_range, z_range)
-        normalized_magnitudes = average_magnitude_per_slice[top_slices_indices] / np.max(average_magnitude_per_slice[top_slices_indices])
+        normalized_magnitudes = average_magnitude_per_slice[top_slices_indices] / np.max(
+            average_magnitude_per_slice[top_slices_indices])
 
         for i, slice_index in enumerate(outlier_indices_sorted_by_pane):
             Y_mesh = np.full(X_mesh.shape, slice_index)
@@ -467,7 +443,8 @@ def mdtm_find_outlier(p_X, p_recon, p_count, p_slice) -> None:
 
         # Create a meshgrid for x and y
         X_mesh, Y_mesh = np.meshgrid(x_range, y_range)
-        normalized_magnitudes = average_magnitude_per_slice[top_slices_indices] / np.max(average_magnitude_per_slice[top_slices_indices])
+        normalized_magnitudes = average_magnitude_per_slice[top_slices_indices] / np.max(
+            average_magnitude_per_slice[top_slices_indices])
 
         # Plot meshgrids for the top 10 panes by average magnitude
         for i, slice_index in enumerate(outlier_indices_sorted_by_pane):
@@ -491,37 +468,41 @@ def mdtm_find_outlier(p_X, p_recon, p_count, p_slice) -> None:
         plt.show()
 
     # Slice method
-    if p_slice == "x": x_slice()
-    elif p_slice == "y": y_slice()
-    else: z_slice()
+    if p_slice == "x":
+        x_slice()
+    elif p_slice == "y":
+        y_slice()
+    else:
+        z_slice()
 
-def mdtm_find_row_outlier(p_X, p_recon, p_count) -> None:
-    """
-    Plots row outliers based on average row magnitude from the residual of p_X-(p_recon).
-    Args:
-        p_X: Original temporal signal tensor
-        p_recon: Reconstruction of p_X from S ⊡ Φ1Y1, Φ2Y2, Φ3Y3
-        p_count: Number of subplots to display, one for each row outlier in p_count. Maximum count of 10.
-    """
-    # TODO
 
-def mdtm_find_col_outlier(p_X, p_recon, p_count) -> None:
-    """
-    Plots column outliers based on average column magnitude from the residual of p_X-(p_recon).
-    Args:
-        p_X: Original temporal signal tensor
-        p_recon: Reconstruction of p_X from S ⊡ Φ1Y1, Φ2Y2, Φ3Y3
-        p_count: Number of subplots to display, one for each column outlier in p_count. Maximum count of 10.
-    """
-    # TODO
+def mdtd_clustering(p_PhiY, n_clusters):
+    fig, axes = plt.subplots(1, len(p_PhiY), figsize=(5*(1+len(p_PhiY)), 5))
+    all_labels = []
+    # Iterate through list of PhiY and perform KMeans on each
+    for i, matrix in enumerate(p_PhiY):
+        kmeans = KMeans(n_clusters=n_clusters, random_state=42)
+        kmeans.fit(matrix)
+        labels = kmeans.labels_
+        all_labels.extend(labels)
+        # Plot on figure
+        axes[i].scatter(matrix[:, 0], matrix[:, 1], c=labels, cmap='viridis')
+        axes[i].set_title(f'Matrix {i+1} Clusters')
 
-def mdtm_load_config():
+    scatter = plt.scatter([], [], c=[], cmap='viridis')
+    scatter.set_clim(min(all_labels), max(all_labels))
+    # Define colorbar to fit RHS
+    cbar = plt.colorbar(scatter, ax=axes.ravel().tolist(), pad=0.05)
+    cbar.set_label('Cluster #')
+    plt.show()
+
+def mdtd_load_config():
     def build_adj_matrix(p_path, p_dim):
         adj_data = np.loadtxt(p_path, delimiter=',', dtype=int)
         rows, cols = adj_data[:, 0], adj_data[:, 1]
-        return sp.csc_matrix((np.ones_like(rows-1), (rows-1, cols-1)), shape=(p_dim, p_dim))
+        return sp.csc_matrix((np.ones_like(rows - 1), (rows - 1, cols - 1)), shape=(p_dim, p_dim))
 
-    with open('mdtm_config.json', 'r') as file:
+    with open('mdtd_config.json', 'r') as file:
         config = json.load(file)
 
     # Load X from a CSV file
@@ -550,6 +531,7 @@ def mdtm_load_config():
 
     return X, adj_1, adj_2, mask, count_nnz, num_iters_check, lam, K, epsilon
 
+
 def mdtd_format_numpy_to_csv(p_data):
     row_indices, column_indices, depth_indices = np.indices(p_data.shape)
     rows = row_indices.flatten()
@@ -564,31 +546,27 @@ def mdtd_format_numpy_to_csv(p_data):
     })
     csv_file_path = '/Users/michaelpaglia/Documents/pyspady-personal/pyspady/mdtd_numpy_to_csv'
     df.to_csv(csv_file_path, index=False)
-
     csv_file_path
+
 
 def mdtd_format_csv_to_numpy(p_data_csv):
     df = pd.read_csv(p_data_csv)
     max_row = df['Row'].max() + 1
     max_col = df['Column'].max() + 1
     max_depth = df['Depth'].max() + 1
-
-    # Initialize the numpy array with NaNs or another placeholder value
     reconstructed_array = np.full((max_row, max_col, max_depth), np.nan, dtype=np.longdouble)
-
-    # Use pandas to extract the row, column, and depth indices and the corresponding values
     rows = df['Row'].values
     cols = df['Column'].values
     depths = df['Depth'].values
     values = df['Value'].values
-
-    # Use advanced indexing to set the values directly
     reconstructed_array[rows, cols, depths] = values
-
     return reconstructed_array
 
+
 if __name__ == '__main__':
-    #mdtm_input_x, mdtm_input_adj, mdtm_input_mask, mdtm_input_count_nnz, mdtm_input_num_iters_check, mdtm_input_lam, mdtm_input_K, mdtm_input_epsilon = mdtm_load_config()
-    mdtm_X, recon_X = mdtm(is_syn=True, X=None, adj1=None, adj2=None, mask=[], count_nnz=0, num_iters_check=10, lam=0.000001, K=10,
+    # mdtm_input_x, mdtm_input_adj, mdtm_input_mask, mdtm_input_count_nnz, mdtm_input_num_iters_check, mdtm_input_lam, mdtm_input_K, mdtm_input_epsilon = mdtm_load_config()
+    mdtm_X, recon_X, phi_y = mdtd(is_syn=True, X=None, adj1=None, adj2=None, mask=[], count_nnz=0, num_iters_check=10,
+                           lam=0.000001, K=10,
                            epsilon=1e-4)
-    #mdtm_find_outlier(mdtm_X, recon_X, 10)
+    mdtd_clustering(phi_y, 10)
+    # mdtm_find_outlier(mdtm_X, recon_X, 10)

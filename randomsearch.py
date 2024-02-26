@@ -7,7 +7,7 @@ from scipy.stats import uniform
 
 
 class CustomEncoder(BaseEstimator, TransformerMixin):
-    def __init__(self, K=7, iterations=100, lambda1=0.1, lambda2=0.1, lambda3=1, rho1=0.01, rho2=0.01, residual_threshold=0.05, coefficient_threshold=0.1):
+    def __init__(self, K=7, iterations=100, lambda1=0.1, lambda2=0.1, lambda3=1, rho1=0.01, rho2=0.01):
         # Initialization with user thresholds):
         X, psi, phi, mask = config_run("config.json")
         self.X = X
@@ -21,8 +21,6 @@ class CustomEncoder(BaseEstimator, TransformerMixin):
         self.lambda3 = lambda3
         self.rho1 = rho1
         self.rho2 = rho2
-        self.residual_threshold = residual_threshold
-        self.coefficient_threshold = coefficient_threshold
 
     def fit(self, X, y=None):
         X = self.X
@@ -36,7 +34,6 @@ class CustomEncoder(BaseEstimator, TransformerMixin):
         X = self.X
         residual = X - (self.psi @ self.Y_ @ self.W_ @ self.phi)
         residual_percentage = -np.linalg.norm(residual, ord='fro')/np.linalg.norm(X, ord='fro')
-        #coefficient_percentage = (np.count_nonzero(self.Y_) + np.count_nonzero(self.W_)) / (self.Y_.size + self.W_.size)
         return residual_percentage
 
 

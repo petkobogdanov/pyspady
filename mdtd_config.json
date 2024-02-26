@@ -5,7 +5,7 @@
   "mask_percentage_random": 0,
   "count_nnz": 0,
   "num_iters_check": 10,
-  "lam": 0.000005,
-  "K": 100,
+  "lam": 0.0001,
+  "K": 150,
   "epsilon": 1e-4
 }
