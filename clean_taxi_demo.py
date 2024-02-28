@@ -1,6 +1,6 @@
 import calendar
 import csv
-from clustering import cluster
+from tgsd_clustering import cluster
 
 import pandas as pd
 import numpy as np
@@ -28,12 +28,14 @@ geolocator = Photon(user_agent="measurements")
 geocode = RateLimiter(geolocator.geocode, min_delay_seconds=0.5)
 transformer = Transformer.from_crs("EPSG:4326", "EPSG:3857", always_xy=True)
 
+# Bounds of NYC in wgs84 format
 nyc_bounds_wgs84 = {
     'west': -74.255735,
     'south': 40.496044,
     'east': -73.700272,
     'north': 40.915256,
 }
+# Transform coordinates of NYC bounds
 nyc_bounds_mercator = {
     'west': transformer.transform(nyc_bounds_wgs84['west'], nyc_bounds_wgs84['south'])[0],
     'south': transformer.transform(nyc_bounds_wgs84['west'], nyc_bounds_wgs84['south'])[1],
@@ -43,12 +45,35 @@ nyc_bounds_mercator = {
 
 
 def load_lat_long():
+    """
+    Loads the latitude and longitude Matlab file
+    Returns:
+        Numpy array of lat_long_info.mat
+    """
     return scipy.io.loadmat("Taxi_prep/lat_long_info.mat")
 
 
 def clean_taxi(month, method, perspective):
-
+    """
+    Performs TGSD or MDTD algorithms on taxi data for a specific month in 2017, along with various downstream tasks
+    Args:
+        month: Integer value of month [1, 12]
+        method: {"pickup", "dropoff", "both"}. TGSD utilizes either pickup or dropoff information while MDTD will use both.
+        perspective: {"point", "row", "col"}. Choice of display for graphs.
+    """
     def generate_pickup_or_dropoff_adj(adj_matrix, all_data, method, date_range):
+        """
+        Generates a square adjacency matrix given some data for a particular month.
+        Entry (i, j) in the adjacency matrix is the sum of passengers picked up or dropped off at i or j from i or j
+        Args:
+            adj_matrix: Some empty adjacency matrix of a given size to fill.
+            all_data: pandas DataFrame of all necessary location/time/pickup/dropoff data
+            method: {"pickup", "dropoff", "both"}. TGSD utilizes either pickup or dropoff information while MDTD will use both.
+            date_range: Given days in some particular month.
+
+        Returns:
+            Numpy array of the formatted data and symmetrical adjacency matrix.
+        """
         if method == "pickup":
             aggregated_data = all_data.groupby(['time_bin', 'PULocationID']).size().reset_index(name='trip_count')
             pivot_table = aggregated_data.pivot(index='time_bin', columns='PULocationID', values='trip_count')
@@ -68,12 +93,24 @@ def clean_taxi(month, method, perspective):
         return np.array(pivot_table.values.T), adj_matrix
 
     def extract_adj_matrix_csv(adj_matrix, pickup_or_dropoff):
+        """
+        Helper method to extract a .csv of pickup or dropoff data from an adjacency matrix as a numpy array
+        Args:
+            adj_matrix: Numpy array of an adjacency matrix
+            pickup_or_dropoff: Either pickup or dropoff data to extract
+        """
         rows, cols = np.nonzero(adj_matrix)
         data = list(zip(rows + 1, cols + 1))  # Adding 1 to convert from 0-based to 1-based indexing, if necessary
         df_nonzero = pd.DataFrame(data, columns=['r', 'c'])
         df_nonzero.to_csv(f'{pickup_or_dropoff}_adjacency.csv', index=False, header=False)
 
     def extract_tensor_csv(all_data, date_range, num_locations):
+        """
+        Helper method to extract a .csv of pickup and dropoff data from a tensor as a numpy array
+        Args:
+            all_data: pandas DataFrame of all necessary location/time/pickup/dropoff data
+            date_range: Given days in some particular month.
+        """
         time_bins = all_data['time_bin'].sort_values().unique()
         time_bin_to_index = {time: index for index, time in enumerate(time_bins)}
         all_data['time_index'] = all_data['time_bin'].apply(lambda x: time_bin_to_index[x])
@@ -105,14 +142,18 @@ def clean_taxi(month, method, perspective):
     adj_template = np.zeros((num_locations, num_locations), dtype=int)
 
     if method == "pickup" or method == "dropoff":
+        # TGSD
+        # Generate respective data and adjacency matrix given method
         d, adj_matrix = generate_pickup_or_dropoff_adj(adj_template, all_data, method, date_range)
         Psi_GFT = gen_gft_new(adj_matrix, False)
         Psi_GFT = Psi_GFT[0]  # eigenvectors
         ram = gen_rama(t=d.shape[1], max_period=24)  # t = 2nd dim of Ramanujan dictionary
         mask = np.random.randint(0, 65536, size=(1, 3500), dtype=np.uint16)
+        # Perform TGSD
         Y, W = tgsd(d, Psi_GFT, ram, mask, iterations=100, k=7, lambda_1=.1, lambda_2=.1, lambda_3=1,
                     rho_1=.01, rho_2=.01, type="rand")
 
+        # Downstream tasks
         if perspective == "point":
             find_outlier(d, Psi_GFT, Y, W, ram, .1, 30, p_month=month)
         elif perspective == "row":
@@ -120,9 +161,11 @@ def clean_taxi(month, method, perspective):
         else:
             find_col_outlier(d, Psi_GFT, Y, W, ram, 10, p_month=month, p_method=method)
 
+        # K-Means
         cluster(Psi_GFT, Y)
 
     else:
+        # MDTD
         # _, adj_matrix_pickup = pickup_or_dropoff(adj_template, all_data, "pickup", date_range)
         # _, adj_matrix_dropoff = pickup_or_dropoff(adj_template, all_data, "dropoff", date_range)
         # extract_adj_matrix_csv(adj_matrix_dropoff, "dropoff")
@@ -130,15 +173,17 @@ def clean_taxi(month, method, perspective):
         # extract_tensor_csv(all_data, date_range, num_locations)
 
         X, adj_1, adj_2, mask, count_nnz, num_iters_check, lam, K, epsilon = mdtd_load_config()
+        # Perform MDTD
         return_X, recon_X, phi_y = mdtd(is_syn=False, X=X, adj1=adj_1, adj2=adj_2, mask=mask, count_nnz=count_nnz, num_iters_check=num_iters_check,
                                  lam=lam, K=K, epsilon=epsilon)
+        # Downstream tasks
         if perspective == "row":
             mdtd_find_outlier(return_X, recon_X, 10, "x")
         elif perspective == "col":
             mdtd_find_outlier(return_X, recon_X, 10, "y")
         else:
             mdtd_find_outlier(return_X, recon_X, 10, "z")
-
+        # K-Means
         mdtd_clustering(phi_y, 7)
 
 def find_outlier(p_X, p_Psi, p_Y, p_W, p_Phi, p_percentage, p_count, p_month) -> None:

@@ -1,44 +1,18 @@
-import json
 import os
-import random
 import cmath
-import datetime
-from datetime import datetime, timedelta
-# import itertools
 import math
-import ast
 from math import gcd, pi
-
-import numpy
 import numpy as np
 import scipy.io
-import tensorly as tl
-import sparse
-from tensorly.contrib.sparse import tensor as sp_tensor
 import scipy.sparse as sp
 from scipy.fftpack import fft
-from scipy.stats import linregress
-import time
 import matplotlib.pyplot as plt
-from matplotlib import dates as mdates
-from matplotlib.cm import ScalarMappable
-from matplotlib.colors import Normalize
 from matplotlib.gridspec import GridSpec, GridSpecFromSubplotSpec
-from mpl_toolkits.mplot3d import Axes3D
-
 from Y_unittest import TestYConversion
 from W_unittest import TestWConversion
-
 from collections import defaultdict
-from scipy.sparse import spmatrix
-
 import json
-import pandas as pd
 import random
-import csv
-
-# from numba import njit, prange, jit
-# from numba.typed import List
 
 def load_matrix_demo() -> dict:
     """
@@ -416,13 +390,6 @@ def tgsd(X, psi_d, phi_d, mask,
                 break
             else:
                 obj_old = obj_new
-    # plt.xlabel('Iteration')
-    # plt.ylabel('Values')
-    # plt.title('Convergence of Y and W')
-    # plt.grid(True)
-    # Display the final plot
-    # plt.show()
-
     return Y, W
 
 def find_outlier(p_X, p_Psi, p_Y, p_W, p_Phi, p_percentage, p_count) -> None:
@@ -882,18 +849,6 @@ def config_run(config_path: str="config.json"):
             except Exception as e:
                 raise Exception(f"Error saving data: {e}")
 
-    #iterations = 100
-    #k = 7
-    #lambda_1 = 0.1
-    #lambda_2 = 0.1
-    #lambda_3 = 1
-    #rho_1 = 0.01
-    #rho_2 = 0.01
-    #Y, W = tgsd(data, psi_d, phi_d, mask_data, iterations=iterations, k=k, lambda_1=lambda_1, lambda_2=lambda_2, lambda_3=lambda_3, rho_1=rho_1, rho_2=rho_2, type="rand")
-
-    #find_col_outlier(data, psi_d, Y, W, phi_d, 10)
-    #import clustering
-    #clustering.cluster(psi_d, Y)
     return data, psi_d, phi_d, mask_data
 
 ###################################################################################################
@@ -909,25 +864,4 @@ if __name__ == '__main__':
     def norm_new(arg, **kwargs):
         return norm_orig(arg.astype(np.complex128), **kwargs)
 
-    config_run() #<---- Michael and Proshanto
-    #mat = load_matrix_demo()
-    #ram = gen_rama(t=200, max_period=5) # 200x10
-    #mdtm_input_x, mdtm_input_adj, mdtm_input_mask, mdtm_input_count_nnz, mdtm_input_num_iters_check, mdtm_input_lam, mdtm_input_K, mdtm_input_epsilon = mdtm_load_config()
-    #mdtm_X, recon_X = mdtm(is_syn=True, X=None, adj=None, mask=[], count_nnz=0, num_iters_check=10, lam=0.000001, K=10,
-    #                       epsilon=1e-4)
-    #mdtm_find_outlier(mdtm_X, recon_X, 10)
-    #Psi_GFT = gen_gft_new(mat['adj'], False)
-    #Psi_GFT = Psi_GFT[0]  # eigenvectors
-    #Phi_DFT = gen_dft(200)
-    # non_orth_psi = Psi_GFT + 0.1 * np.outer(Psi_GFT[:, 0], Psi_GFT[:, 1])
-    # non_orth_phi = Phi_DFT + 0.1 * np.outer(Phi_DFT[:, 0], Phi_DFT[:, 1])
-
-    #Y, W = tgsd(mat['X'], Psi_GFT, ram, mat['mask'], iterations=100, k=7, lambda_1=.1, lambda_2=.1, lambda_3=1,
-    #            rho_1=.01, rho_2=.01, type="rand")
-
-    #pred_matrix = Psi_GFT @ Y @ W @ Phi_DFT
-    #find_outlier(mat['X'], Psi_GFT, Y, W, Phi_DFT, .1, 25)
-    # find_row_outlier(mat['X'], Psi_GFT, Y, W, Phi_DFT, 10)
-    # find_col_outlier(mat['X'], Psi_GFT, Y, W, Phi_DFT, 10)
-    #print(pred_matrix)
-    #config_run()
+    X, Psi_D, Phi_D, mask = config_run()

@@ -8,8 +8,7 @@ import json
 import pandas as pd
 from tgsd import gen_gft_new, gen_rama
 from sklearn.cluster import KMeans
-from mpl_toolkits.mplot3d import Axes3D
-from matplotlib import cm
+
 
 def load_syn_data() -> dict:
     """
@@ -43,6 +42,11 @@ def load_syn_data() -> dict:
 
 
 def save_to_numpy_arrays():
+    """
+    Saves a .csv file with synthetic data to a numpy array
+    Returns:
+        Numpy arrays for MDTD algorithm: Phi, PhiYg, P
+    """
     load_phi_array = []
     for i in range(3):  # Assuming you have 3 files to load
         arr = np.loadtxt(f'mdtd_demo_data/Phi_{i}.csv', delimiter=',')
@@ -71,27 +75,60 @@ def save_to_numpy_arrays():
 
 
 def mdtd(is_syn: bool, X, adj1, adj2, mask, count_nnz=10, num_iters_check=0, lam=0.000001, K=10, epsilon=1e-4):
+    """
+    Performs tensor decomposition across multi-dictionaries
+    Args:
+        is_syn: Boolean; whether MDTD will use synthetic test data
+        X: User input, a tensor of n-mode
+        adj1: Some user adjacency matrix as a numpy array
+        adj2: Some user adjacency matrix as a numpy array
+        mask: Mask of linear indexing to hide certain values of X from imputation/decomposition
+        count_nnz: Number of non-zeros to count
+        num_iters_check: Every number of iterations to calculate fit
+        lam: Some user input lambda value as a list
+        K: Some user input tensor rank of X
+        epsilon: Some user input epsilon value
+
+    Returns:
+        Original input tensor X, reconstructed tensor of X, Phi*Y
+    """
     def gen_syn_X(p_PhiYg):
+        """
+        Generates synthetic X based on PhiYg from syn_data.mat
+        Args:
+            p_PhiYg: List of PhiYg (synthetic) from Matlab data
+        Returns:
+            Synthetic tensor X: Kruskal tensor of PhiYg
+        """
         # Create a list of matrices from the cell array
         return tl.kruskal_to_tensor((np.ones(10), [matrix for matrix in p_PhiYg[0]]))
 
     def gen_syn_lambda_rho(p_dim):
+        """
+        Generates synthetic lambda and rho values
+        Args:
+            p_dim: Dimensions of the synthetic tensor X
+
+        Returns:
+            List of synthetic lambda values and list of synthetic rho values
+        """
         syn_lambda = [0.000001 for _ in range(p_dim)]
         syn_rho = [val * 5 for val in syn_lambda]
         return syn_lambda, syn_rho
 
     def mttkrp(p_D, p_PhiY, p_n):
-        # Matricized tensor times Khatri-Rao product
+        """
+        Computes Matricized Tensor Times Khatri-Rao Product
+        Args:
+            p_D: Reconstruction of tensor X
+            p_PhiY: List of matrices of shape (X.shape[i], K)
+            p_n: Mode along which to vectorize p_D
+
+        Returns:
+            The Matricized Tensor Times Khatri-Rao Product of p_D and p_PhiY along the n-th mode
+        """
         return tl.unfold(p_D, mode=p_n).astype('float32') @ tl.tenalg.khatri_rao(
             [p_PhiY[i].astype('float32') for i in range(len(p_PhiY)) if i != p_n])
-
-    def nd_index(index, shape):
-        indices = [0] * len(shape)
-        for i in range(len(shape) - 1, -1, -1):
-            stride = np.prod(shape[:i])
-            indices[i], index = divmod(index, stride)
-            indices[i] = int(indices[i])
-        return tuple(indices)
 
     if is_syn:
         # Generate synthetic data numpy arrays
@@ -363,20 +400,23 @@ def mdtd_find_outlier(p_X, p_recon, p_count, p_slice) -> None:
         plt.show()
 
     def x_slice():
+        """
+        Calculates and plots the x-axis outlier slice
+        """
         average_magnitude_per_slice = np.mean(residual, axis=(1, 2))
         top_slices_indices = np.argsort(average_magnitude_per_slice)[::-1][:p_count]
         outlier_indices_sorted_by_pane = sorted(top_slices_indices)
 
         fig = plt.figure(figsize=(10, 7))
         ax = fig.add_subplot(111, projection='3d')
-
+        # Define the range for y and z
         y_range = np.arange(p_X.shape[1])
         z_range = np.arange(p_X.shape[2])
 
         Y_mesh, Z_mesh = np.meshgrid(y_range, z_range)
         normalized_magnitudes = average_magnitude_per_slice[top_slices_indices] / np.max(
             average_magnitude_per_slice[top_slices_indices])
-
+        # Plot meshgrids for the top 10 panes by average magnitude
         for i, slice_index in enumerate(outlier_indices_sorted_by_pane):
             X_mesh = np.full(Y_mesh.shape, slice_index)
             alpha = normalized_magnitudes[i] * 0.9 + 0.1
@@ -396,20 +436,23 @@ def mdtd_find_outlier(p_X, p_recon, p_count, p_slice) -> None:
         plt.show()
 
     def y_slice():
+        """
+        Calculates and plots the y-axis outlier slice
+        """
         average_magnitude_per_slice = np.mean(residual, axis=(0, 2))
         top_slices_indices = np.argsort(average_magnitude_per_slice)[::-1][:p_count]
         outlier_indices_sorted_by_pane = sorted(top_slices_indices)
 
         fig = plt.figure(figsize=(10, 7))
         ax = fig.add_subplot(111, projection='3d')
-
+        # Define the range for x and z
         x_range = np.arange(p_X.shape[0])
         z_range = np.arange(p_X.shape[2])
-
+        # Create a meshgrid for x and z
         X_mesh, Z_mesh = np.meshgrid(x_range, z_range)
         normalized_magnitudes = average_magnitude_per_slice[top_slices_indices] / np.max(
             average_magnitude_per_slice[top_slices_indices])
-
+        # Plot meshgrids for the top 10 panes by average magnitude
         for i, slice_index in enumerate(outlier_indices_sorted_by_pane):
             Y_mesh = np.full(X_mesh.shape, slice_index)
             alpha = normalized_magnitudes[i] * 0.9 + 0.1
@@ -429,11 +472,13 @@ def mdtd_find_outlier(p_X, p_recon, p_count, p_slice) -> None:
         plt.show()
 
     def z_slice():
+        """
+        Calculates and plots the z-axis outlier slice
+        """
         average_magnitude_per_slice = np.mean(residual, axis=(0, 1))
         top_slices_indices = np.argsort(average_magnitude_per_slice)[::-1][:p_count]
         outlier_indices_sorted_by_pane = sorted(top_slices_indices)
 
-        # Now plot the meshgrids for the selected panes
         fig = plt.figure(figsize=(10, 7))
         ax = fig.add_subplot(111, projection='3d')
 
@@ -477,6 +522,12 @@ def mdtd_find_outlier(p_X, p_recon, p_count, p_slice) -> None:
 
 
 def mdtd_clustering(p_PhiY, n_clusters):
+    """
+    Performs k-means clustering on PhiY
+    Args:
+        p_PhiY: List of matrices of Phi*Y from MDTD algorithm
+        n_clusters: Number of clusters, pre-defined
+    """
     fig, axes = plt.subplots(1, len(p_PhiY), figsize=(5*(1+len(p_PhiY)), 5))
     all_labels = []
     # Iterate through list of PhiY and perform KMeans on each
@@ -497,7 +548,21 @@ def mdtd_clustering(p_PhiY, n_clusters):
     plt.show()
 
 def mdtd_load_config():
+    """
+    Loads the config file mdtd_config.json and extracts expected parameters/hyperparameters based on user input
+    Returns:
+        Parameters for MDTD (X, adj_1, adj_2, mask, count_nnz, num_iters_check, lam, K, epsilon)
+    """
     def build_adj_matrix(p_path, p_dim):
+        """
+        Constructs a square adjacency matrix given some path to an adjacency matrix .csv of shape p_dim by p_dim
+        Args:
+            p_path: Path to some .csv file of an adjacency matrix
+            p_dim: Dimension of square adjacency matrix
+
+        Returns:
+            Sparse adjacency matrix of p_dim by p_dim
+        """
         adj_data = np.loadtxt(p_path, delimiter=',', dtype=int)
         rows, cols = adj_data[:, 0], adj_data[:, 1]
         return sp.csc_matrix((np.ones_like(rows - 1), (rows - 1, cols - 1)), shape=(p_dim, p_dim))
@@ -509,11 +574,13 @@ def mdtd_load_config():
     if config['X']:
         X = mdtd_format_csv_to_numpy(config['X'])
     if X.any():
+        # Construct adjacency matrices
         if config['adj-1']:
             adj_1 = build_adj_matrix(config["adj-1"], X.shape[0])
         if config['adj-2']:
             adj_2 = build_adj_matrix(config["adj-2"], X.shape[1])
 
+    # Construct a random, linear indexed mask based on X shape
     mask_percentage = config["mask_percentage_random"]
     if mask_percentage > 0:
         num_to_mask = int(np.prod(X.shape) * (mask_percentage / 100.0))
@@ -533,6 +600,13 @@ def mdtd_load_config():
 
 
 def mdtd_format_numpy_to_csv(p_data):
+    """
+    Formats a numpy array to a .csv file to download
+    Args:
+        p_data: Some numpy array of the format (r, c, d, v)
+    Returns:
+        .csv file where each line is of the format r, c, d, v
+    """
     row_indices, column_indices, depth_indices = np.indices(p_data.shape)
     rows = row_indices.flatten()
     columns = column_indices.flatten()
@@ -544,12 +618,20 @@ def mdtd_format_numpy_to_csv(p_data):
         'Depth': depths,
         'Value': values
     })
+    # Adjust file path as necessary
     csv_file_path = '/Users/michaelpaglia/Documents/pyspady-personal/pyspady/mdtd_numpy_to_csv'
     df.to_csv(csv_file_path, index=False)
     csv_file_path
 
 
 def mdtd_format_csv_to_numpy(p_data_csv):
+    """
+    Formats a .csv file to a numpy array, compatible for MDTD algorithm
+    Args:
+        p_data_csv: Some .csv file of format (r, c, d, v) for each line
+    Returns:
+        Reconstructed numpy array from .csv file
+    """
     df = pd.read_csv(p_data_csv)
     max_row = df['Row'].max() + 1
     max_col = df['Column'].max() + 1
