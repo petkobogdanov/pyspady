@@ -52,14 +52,20 @@ class CustomEncoder(BaseEstimator, TransformerMixin):
 # Define custom encoder
 custom_encoder = CustomEncoder()
 # Grid of parameters to search
-param_grid = {
+param_grid_mask = {
     'K': [2, 4, 6, 8, 10],
     'lambda1': [.001, .01, .1, 1],
     'lambda2': [.001, .01, .1, 1],
     'lambda3': [.1, 1, 10]
 }
+param_grid_no_mask = {
+    'K': [2, 4, 6, 8, 10],
+    'lambda1': [.001, .01, .1, 1],
+    'lambda2': [.001, .01, .1, 1],
+}
 # Perform grid-search
-grid_search = GridSearchCV(custom_encoder, param_grid)
+grid_search = GridSearchCV(custom_encoder, param_grid_mask) if len(custom_encoder.mask) > 0 else GridSearchCV(custom_encoder, param_grid_no_mask)
+
 # Fit parameters to custom encoder
 grid_search.fit(custom_encoder.X)
 

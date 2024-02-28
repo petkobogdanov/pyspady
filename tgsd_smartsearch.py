@@ -69,14 +69,21 @@ class CustomEncoder(BaseEstimator, TransformerMixin):
 
 
 # Hyperparameters to search using a uniform random distribution sampling
-param_distributions = {
+param_distributions_mask = {
     'K': sp_randint(1, 11),
     'lambda1': uniform(0.001, 1),
     'lambda2': uniform(0.001, 1),
     'lambda3': uniform(0.1, 10)
 }
+param_distributions_no_mask = {
+    'K': sp_randint(1, 11),
+    'lambda1': uniform(0.001, 1),
+    'lambda2': uniform(0.001, 1),
+}
 # n_iters denotes how many times a permutation is chosen across cv #folds
-param_sampler = ParameterSampler(param_distributions, n_iter=200, random_state=42)
+initialize = CustomEncoder()
+param_sampler = ParameterSampler(param_distributions_mask, n_iter=200, random_state=42) if len(initialize.mask) > 0 else \
+    ParameterSampler(param_distributions_no_mask, n_iter=200, random_state=42)
 # Custom break mechanism
 # Define best coefficient% and residual% scores as some very large number
 best_coefficient_score = np.inf

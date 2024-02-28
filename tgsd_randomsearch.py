@@ -54,14 +54,20 @@ class CustomEncoder(BaseEstimator, TransformerMixin):
 # Define custom encoder
 custom_encoder = CustomEncoder()
 # Hyperparameters to search using a uniform random distribution sampling
-param_distributions = {
+param_distributions_mask = {
     'K': sp_randint(1, 11),
     'lambda1': uniform(0.001, 1),
     'lambda2': uniform(0.001, 1),
     'lambda3': uniform(0.1, 10)
 }
+param_distributions_no_mask = {
+    'K': sp_randint(1, 11),
+    'lambda1': uniform(0.001, 1),
+    'lambda2': uniform(0.001, 1),
+}
 # n_iters denotes how many times a permutation is chosen across cv #folds
-random_search = RandomizedSearchCV(custom_encoder, param_distributions, n_iter=100, cv=5, random_state=42)
+random_search = RandomizedSearchCV(custom_encoder, param_distributions_mask, n_iter=100, cv=5, random_state=42) if len(custom_encoder.mask) > 0 else\
+    RandomizedSearchCV(custom_encoder, param_distributions_no_mask, n_iter=100, cv=5, random_state=42)
 # Fit parameters to custom encoder
 random_search.fit(custom_encoder.X)
 print("Best parameters:", random_search.best_params_)
