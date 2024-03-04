@@ -1,18 +1,15 @@
 from sklearn.model_selection import ParameterSampler
 from sklearn.base import BaseEstimator, TransformerMixin
 import numpy as np
-from tgsd import tgsd, config_run
 from scipy.stats import randint as sp_randint
 from scipy.stats import uniform
+import tgsd_home
 
 
 class CustomEncoder(BaseEstimator, TransformerMixin):
-    def __init__(self, K=7, iterations=100, lambda1=0.1, lambda2=0.1, lambda3=1, rho1=0.01, rho2=0.01):
-        X, psi, phi, mask = config_run("config.json")
-        self.X = X
-        self.psi = psi
-        self.phi = phi
-        self.mask = mask
+    def __init__(self, config_path, K=7, iterations=100, lambda1=0.1, lambda2=0.1, lambda3=1, rho1=0.01, rho2=0.01):
+        self.X, self.Psi_D, self.Phi_D, self.mask = tgsd_home.TGSD_Home(config_path=f"{config_path}")
+        self.Y, self.W = None, None
         self.K = K
         self.iterations = iterations
         self.lambda1 = lambda1
@@ -117,8 +114,10 @@ for params in param_sampler:
 
     # Valid permutation found given user input for residual and coefficient thresholds
     if residual_percentage < residual_threshold and coefficient_percentage < coefficient_threshold:
-        print(f"Early stopping at residual score {residual_percentage} and coefficient score {coefficient_percentage} with parameters {params}")
+        print(
+            f"Early stopping at residual score {residual_percentage} and coefficient score {coefficient_percentage} with parameters {params}")
         found = True
         break
 # Valid permutation was not found, so print out the best scores and parameters found for each percentage
-if not found: print(f"After all possible iterations: Residual%={best_residual_score}; Best params {best_residual_params} | Coefficient%={best_coefficient_score}; Best params {best_coefficient_params}")
+if not found: print(
+    f"After all possible iterations: Residual%={best_residual_score}; Best params {best_residual_params} | Coefficient%={best_coefficient_score}; Best params {best_coefficient_params}")

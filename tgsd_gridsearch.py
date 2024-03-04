@@ -1,7 +1,7 @@
 import numpy as np
 from sklearn.base import BaseEstimator, TransformerMixin
 from sklearn.model_selection import GridSearchCV
-from tgsd import tgsd, config_run
+from tgsd_home import tgsd, config_run
 
 
 class CustomEncoder(BaseEstimator, TransformerMixin):

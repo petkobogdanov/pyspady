@@ -13,11 +13,18 @@ setuptools.setup(
     url="https://github.com/petkobogdanov/pyspady",
     packages=setuptools.find_packages(),
     install_requires=[
-        'numpy',
-        'scipy',
-        'tensorly',
-        'matplotlib',
-        'pandas'
+        'numpy',            # Linear algebra operations
+        'scipy',            # Linear algebra operations
+        'tensorly',         # Tensor operations
+        'matplotlib',       # Plotting
+        'pandas',           # Data storage & retrieval
+        'pyfiglet',         # Logo
+        'geopandas',        # For geospatial data operations
+        'contextily',       # For basemap tile sourcing
+        'shapely',          # For geometric operations
+        'geopy',            # For geocoding and other geographic computations
+        'scikit-learn',     # For ParameterSampler, BaseEstimator, TransformerMixin
+        'pyproj',           # Coordinate transformations used in demo modules
     ],
     classifiers=[
         "Programming Language :: Python :: 3",

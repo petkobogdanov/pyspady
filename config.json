@@ -1,5 +1,5 @@
 {
-    "x": "matlab_demo_X.csv",
+    "x": "tgsd_demo_data/matlab_demo_X.csv",
     "psi": "GFT",
     "phi": "DFT",
     "mask_mode": "PATH",
@@ -12,6 +12,6 @@
     "first_x_dimension": 200,
     "adj_square_dimension": 175,
     "second_x_dimension": 175,
-    "adj_path": "matlab_demo_adj.csv",
-    "mask_path": "matlab_demo_mask.csv"
+    "adj_path": "tgsd_demo_data/matlab_demo_adj.csv",
+    "mask_path": "tgsd_demo_data/matlab_demo_mask.csv"
 }
