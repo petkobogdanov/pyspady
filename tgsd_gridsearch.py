@@ -1,12 +1,14 @@
 import numpy as np
 from sklearn.base import BaseEstimator, TransformerMixin
 from sklearn.model_selection import GridSearchCV
-from tgsd_home import tgsd, config_run
+import tgsd_home
+
+TGSD_Driver = tgsd_home.TGSD_Home
 
 
 class CustomEncoder(BaseEstimator, TransformerMixin):
-    def __init__(self, K=7, iterations=100, lambda1=0.1, lambda2=0.1, lambda3=1, rho1=0.01, rho2=0.01):
-        X, psi, phi, mask = config_run("config.json")
+    def __init__(self, config_file, K=7, iterations=100, lambda1=0.1, lambda2=0.1, lambda3=1, rho1=0.01, rho2=0.01):
+        X, psi, phi, mask = TGSD_Driver.config_run(config_file)
         self.X = X
         self.psi = psi
         self.phi = phi
@@ -18,6 +20,19 @@ class CustomEncoder(BaseEstimator, TransformerMixin):
         self.lambda3 = lambda3
         self.rho1 = rho1
         self.rho2 = rho2
+        self.best_params = None
+        self.best_score = None
+        self.param_grid_mask = {
+            'K': [2, 4, 6, 8, 10],
+            'lambda1': [.001, .01, .1, 1],
+            'lambda2': [.001, .01, .1, 1],
+            'lambda3': [.1, 1, 10]
+        }
+        self.param_grid_no_mask = {
+            'K': [2, 4, 6, 8, 10],
+            'lambda1': [.001, .01, .1, 1],
+            'lambda2': [.001, .01, .1, 1],
+        }
 
     def fit(self, X, y=None):
         """
@@ -28,9 +43,10 @@ class CustomEncoder(BaseEstimator, TransformerMixin):
             Y and W from TGSD
         """
         X = self.X
-        Y, W = tgsd(X, self.psi, self.phi, self.mask, self.iterations, self.K, self.lambda1, self.lambda2, self.lambda3,
-                    self.rho1,
-                    self.rho2, type="rand")
+        Y, W = TGSD_Driver.tgsd(X, self.psi, self.phi, self.mask, self.iterations, self.K, self.lambda1, self.lambda2,
+                                self.lambda3,
+                                self.rho1,
+                                self.rho2, type="rand")
         self.Y_ = Y
         self.W_ = W
         return self
@@ -48,26 +64,30 @@ class CustomEncoder(BaseEstimator, TransformerMixin):
         residual = X - (self.psi @ self.Y_ @ self.W_ @ self.phi)
         return -np.linalg.norm(residual, ord='fro') / np.linalg.norm(X, ord='fro')
 
+    def get_best_score(self):
+        """
+        Returns:
+            Best score of grid search
+        """
+        return self.best_score
 
-# Define custom encoder
-custom_encoder = CustomEncoder()
-# Grid of parameters to search
-param_grid_mask = {
-    'K': [2, 4, 6, 8, 10],
-    'lambda1': [.001, .01, .1, 1],
-    'lambda2': [.001, .01, .1, 1],
-    'lambda3': [.1, 1, 10]
-}
-param_grid_no_mask = {
-    'K': [2, 4, 6, 8, 10],
-    'lambda1': [.001, .01, .1, 1],
-    'lambda2': [.001, .01, .1, 1],
-}
-# Perform grid-search
-grid_search = GridSearchCV(custom_encoder, param_grid_mask) if len(custom_encoder.mask) > 0 else GridSearchCV(custom_encoder, param_grid_no_mask)
+    def get_best_params(self):
+        """
+        Returns:
+            Best parameter combination of grid search
+        """
+        return self.best_params
 
-# Fit parameters to custom encoder
-grid_search.fit(custom_encoder.X)
+    def run_grid_search(self):
+        """
+        Uses the parameter grid to determine the best combination of parameters and best score
+        """
+        param_grid = self.param_grid_mask if len(self.mask) > 0 else self.param_grid_no_mask
+        grid_search = GridSearchCV(self, param_grid)
+        # Fit parameters to custom encoder
+        grid_search.fit(self.X)
+        self.best_params = grid_search.best_params_
+        self.best_score = grid_search.best_score_
+        print("Best parameters:", grid_search.best_params_)
+        print("Best score (negative Frobenius norm):", grid_search.best_score_)
 
-print("Best parameters:", grid_search.best_params_)
-print("Best score (negative Frobenius norm):", grid_search.best_score_)
