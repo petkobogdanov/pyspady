@@ -369,7 +369,7 @@ class TGSD_Home:
         match str(config["psi"]).lower():
             case "ram":
                 # psi_d = gen_rama(400, 10)
-                psi_d = dictionary_generation.GenerateDictionary.gen_rama(data.shape[1], 10)
+                psi_d = dictionary_generation.GenerateDictionary.gen_rama(data.shape[1], 24)
                 pass
             case "gft":
                 # Attempt to load adj_list

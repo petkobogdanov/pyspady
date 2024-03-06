@@ -10,6 +10,7 @@ import mdtd_home
 import tgsd_clustering
 import taxi_tensor_clustering
 import json
+import tgsd_smartsearch
 
 GenDict = dictionary_generation.GenerateDictionary
 MDTD_Data_Process = mdtd_data_process.MDTD_Data_Process
@@ -20,10 +21,11 @@ Taxi_Tensor_Clustering = taxi_tensor_clustering.Taxi_Tensor_Clustering
 
 
 class Taxi_Demo:
-    def __init__(self, month, method, perspective):
+    def __init__(self, month, method, perspective, auto):
         self.month = month
         self.method = method
         self.perspective = perspective
+        self.auto = auto
 
     def load_lat_long(self):
         """
@@ -135,12 +137,27 @@ class Taxi_Demo:
             # Generate respective data and adjacency matrix given method
             d, adj_matrix = generate_pickup_or_dropoff_adj(adj_template, all_data, self.method, date_range)
             # Perform TGSD
+            # Load in config file and override X/Psi/Phi/Mask with taxi data instead
             TGSD_Driver = tgsd_home.TGSD_Home("config.json")
             TGSD_Driver.X = d
             TGSD_Driver.Psi_D = GenDict.gen_gft_new(adj_matrix, False)[0]
             TGSD_Driver.Phi_D = GenDict.gen_rama(t=d.shape[1], max_period=24)
             TGSD_Driver.mask = np.random.randint(0, 65536, size=(1, 3500), dtype=np.uint16)
-            Y, W = TGSD_Driver.tgsd(TGSD_Driver.X, TGSD_Driver.Psi_D, TGSD_Driver.Phi_D, TGSD_Driver.mask)
+
+            if not self.auto:
+                Y, W = TGSD_Driver.tgsd(TGSD_Driver.X, TGSD_Driver.Psi_D, TGSD_Driver.Phi_D, TGSD_Driver.mask)
+            else:
+                # Run smart search using thresholds of 0.3 and 0.3. Change accordingly.
+                # If demo is changed to False, default values of X/Psi/Phi/mask will be loaded in.
+                # This is *not* what we want for the demo on the taxi dataset.
+                Smart_Search = tgsd_smartsearch.CustomEncoder(config_path="config.json",
+                                                              demo=True, demo_X=TGSD_Driver.X, demo_Psi=TGSD_Driver.Psi_D, demo_Phi=TGSD_Driver.Phi_D, demo_mask=TGSD_Driver.mask,
+                                                              coefficient_threshold=0.3,
+                                                              residual_threshold=0.3)
+                Smart_Search.run_smart_search()
+                # Obtain the encoding matrices using optimized hyperparameters.
+                Y, W = Smart_Search.get_Y_W()
+
             # Downstream tasks
             if self.perspective == "point":
                 Taxi_2D_Outlier.find_outlier(TGSD_Driver.X, TGSD_Driver.Psi_D, Y, W, TGSD_Driver.Phi_D, .1, 30,
@@ -167,8 +184,6 @@ class Taxi_Demo:
             tensor_data["X"] = f"Taxi_tensor_data/{month_st}_tensor_data"
             tensor_data["adj-1"] = f"Taxi_tensor_data/{month_st}_pickup_adjacency.csv"
             tensor_data["adj-2"] = f"Taxi_tensor_data/{month_st}_dropoff_adjacency.csv"
-
-            # Step 3: Write the modified dictionary back to the JSON file
             with open("mdtd_config.json", 'w') as file:
                 json.dump(tensor_data, file, indent=4)
             MDTD_Driver = mdtd_home.MDTD_Home(
