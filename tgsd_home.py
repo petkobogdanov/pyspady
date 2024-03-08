@@ -2,6 +2,7 @@ import os
 import math
 import numpy as np
 import scipy.sparse as sp
+import pandas as pd
 from Y_unittest import TestYConversion
 from W_unittest import TestWConversion
 import json
@@ -300,7 +301,9 @@ class TGSD_Home:
                     obj_old = obj_new
         return self.Y, self.W
 
-    def config_run(self, config_path: str = "config.json"):
+    def config_run(self, dataframe: pd.DataFrame = None, config_path: str = "config.json"):
+        # data_mode = csv or dataframe
+
         # Try to open the config file
         try:
             with open(config_path) as file:
@@ -361,10 +364,17 @@ class TGSD_Home:
                 load_flag = config["load_flag"]
 
         # Try to load the data
-        try:
-            data: np.ndarray[any] = np.genfromtxt(config["x"], delimiter=',')
-        except Exception as e:
-            raise Exception(f"Error loading data from '{config['x']}': {e}")
+        if dataframe is None:
+            try:
+                # data: np.ndarray[any] = np.genfromtxt(config["x"], delimiter=',')
+                data: np.ndarray[any] = TGSD_Home.parse_data(config["x"], data_type='X')
+            except Exception as e:
+                raise Exception(f"Error loading data from '{config['x']}': {e}")
+        else:
+            try:
+                data: np.ndarray[any] = TGSD_Home.parse_data(dataframe, data_type='X')
+            except Exception as e:
+                raise Exception(f"Error loading data from dataframe")
 
         match str(config["psi"]).lower():
             case "ram":
@@ -373,10 +383,17 @@ class TGSD_Home:
                 pass
             case "gft":
                 # Attempt to load adj_list
-                try:
-                    adj_data: np.ndarray[any] = np.loadtxt(config["adj_path"], delimiter=',', dtype=int)
-                except Exception as e:
-                    raise Exception(f"Error loading adj_list data from '{config['adj_path']}': {e}")
+                if dataframe is None:
+                    try:
+                        # adj_data: np.ndarray[any] = np.loadtxt(config["adj_path"], delimiter=',', dtype=int)
+                        adj_data: np.ndarray[any] = TGSD_Home.parse_data(config["adj_path"], data_type='adj')
+                    except Exception as e:
+                        raise Exception(f"Error loading adj_list data from '{config['adj_path']}': {e}")
+                else:
+                    try:
+                        adj_data: np.ndarray[any] = TGSD_Home.parse_data(dataframe, data_type='adj')
+                    except Exception as e:
+                        raise Exception(f"Error loading adj_list data from dataframe")
                 # Validate the adjacency matrix's dimension
                 if not ("adj_square_dimension" in config):
                     raise Exception("PSI's dictionary, GFT, requires 'adj_square_dimension' key")
@@ -444,17 +461,24 @@ class TGSD_Home:
                     if not ("mask_path" in config):
                         raise Exception("Config must contain the 'mask_path' key when mask_mode = is path")
                     # Attempt to load mask data
-                    try:
-                        mask_data: np.ndarray[any] = np.genfromtxt(config["mask_path"], delimiter=',', ndmin=2,
-                                                                   dtype=np.uint16)
-                    except Exception as e:
-                        raise Exception(f"Error loading mask data from '{config['mask_path']}': {e}")
+                    if dataframe is None:
+                        try:
+                            # mask_data: np.ndarray[any] = np.genfromtxt(config["mask_path"], delimiter=',', ndmin=2,
+                            #                                            dtype=np.uint16)
+                            mask_data: np.ndarray[any] = TGSD_Home.parse_data(config["mask_path"], data_type='mask')
+                        except Exception as e:
+                            raise Exception(f"Error loading mask data from '{config['mask_path']}': {e}")
+                    else:
+                        try:
+                            mask_data: np.ndarray[any] = TGSD_Home.parse_data(dataframe, data_type='mask')
+                        except Exception as e:
+                            raise Exception(f"Error loading mask data from dataframe")
                 case _:
                     raise Exception(f"Invalid 'mask_mode': {config['mask_mode']}")
 
         # If the save flag is enabled save to file
         if (save_flag):
-            # Retrieve the the correct path
+            # Retrieve the correct path
             save_path: str = config["save_path"] if "save_path" in config else "save.match"
             # Insure that data is not overwritten without user consent
             if (os.path.exists(save_path)):
@@ -475,3 +499,73 @@ class TGSD_Home:
                     raise Exception(f"Error saving data: {e}")
 
         return data, psi_d, phi_d, mask_data
+
+    @staticmethod
+    def parse_data(data, data_type: str):
+        """
+        Parse data either from CSV Path or Pandas Dataframe
+
+        Parameters:
+            data (str or pd.Dataframe): Either CSV Path or Pandas Dataframe
+            data_type (str): Type of data to extract ('X', 'adj', 'mask')
+
+        Returns:
+            np.ndarray: Extracted data as numpy array
+        """
+        if isinstance(data, str):  # If data is csv path
+            if data_type == 'X':
+                return np.genfromtxt(data, delimiter=',')
+            if data_type == 'adj':
+                return np.loadtxt(data, delimiter=',', dtype=int)
+            if data_type == 'mask':
+                return np.genfromtxt(data, delimiter=',', ndmin=2, dtype=np.uint16)
+        elif isinstance(data, pd.DataFrame):  # If data is a Pandas dataframe
+            if data_type == 'X':
+                return data['X'].dropna().astype(float).values
+            if data_type == 'adj':
+                return data['adj'].dropna().astype(int).values
+            if data_type == 'mask':
+                return data['mask'].dropna().astype(np.uint16).values
+
+#######################################################################################################################
+# Read csv data into DataFrame
+df_X = pd.read_csv('tgsd_demo_data/matlab_demo_X.csv', header=None, dtype=str)
+df_adj = pd.read_csv('tgsd_demo_data/matlab_demo_adj.csv', header=None)
+df_mask = pd.read_csv('tgsd_demo_data/matlab_demo_mask.csv', header=None, dtype=np.uint16)
+
+# Assign column names to DataFrames
+df_X.columns = ['X'] * len(df_X.columns)
+df_adj.columns = ['adj'] * len(df_adj.columns)
+df_mask.columns = ['mask'] * len(df_mask.columns)
+
+# Concatenate DataFrames along axis 1 (horizontally)
+combined_df = pd.concat([df_X, df_adj, df_mask], axis=1)
+
+data_csv = TGSD_Home.parse_data('tgsd_demo_data/matlab_demo_X.csv', data_type='X')
+print(data_csv)
+print(type(data_csv))
+print(data_csv.shape)
+
+data_df = TGSD_Home.parse_data(combined_df, data_type='X')
+print(data_df)
+print(type(data_df))
+print(data_df.shape)
+
+# Check if arrays are equal
+if np.array_equal(data_csv, data_df):
+    print("Arrays are the same")
+else:
+    print("Arrays are not the same")
+
+    mask = data_csv != data_df
+    differing_elements = data_csv[mask]
+    num_differing_elements = np.sum(mask)
+
+    print("Differing elements:")
+    print(differing_elements)
+    print(num_differing_elements)
+
+tgsd = TGSD_Home('config.json')
+stuff = tgsd.config_run(dataframe=combined_df)
+tgsd.tgsd(stuff[0], stuff[1], stuff[2], stuff[3])
+#######################################################################################################################
