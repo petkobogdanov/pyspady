@@ -20,12 +20,13 @@ if __name__ == '__main__':
     #Y, W = obj.tgsd(obj.X, obj.Psi_D, obj.Phi_D, obj.mask)
 
     # Test MDTD
-    #obj2 = MDTD_Driver(config_path="mdtd_config.json")
-    #tensor, recon_t, phi_y = obj2.mdtd(is_syn=False, X=obj2.X, adj1=obj2.adj_1, adj2=obj2.adj_2, mask=obj2.mask, count_nnz=obj2.count_nnz, num_iters_check=obj2.num_iters_check, lam=obj2.lam, K=obj2.K, epsilon=obj2.epsilon)
-
+    obj2 = MDTD_Driver(config_path="mdtd_config.json")
+    #tensor, recon_t, phi_y = obj2.mdtd(is_syn=True, X=obj2.X, adj1=obj2.adj_1, adj2=obj2.adj_2, mask=obj2.mask, count_nnz=obj2.count_nnz, num_iters_check=obj2.num_iters_check, lam=obj2.lam, K=obj2.K, epsilon=obj2.epsilon)
+    tensor, recon_t, phi_y = obj2.mdtd(is_syn=True, X=obj2.X, adj1=obj2.adj_1, adj2=obj2.adj_2, mask=obj2.mask)
+    #MDTD_Cluster.mdtd_clustering(phi_y, 7)
     # Test Taxi Demo and Auto-Config (Smart Search)
         # Month = Integer value of month, [1,12]]
         # Method = "pickup" or "dropoff" or "both"
         # Perspective = "point" or "row" or "column"
-    obj3 = Taxi_Demo(month=3, method="pickup", perspective="row", auto=True)
-    obj3.clean_and_run()
+    #obj3 = Taxi_Demo(month=3, method="pickup", perspective="row", auto=True)
+    #obj3.clean_and_run()

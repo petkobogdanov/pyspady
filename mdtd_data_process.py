@@ -4,7 +4,7 @@ import pandas as pd
 class MDTD_Data_Process:
 
     @staticmethod
-    def save_to_numpy_arrays():
+    def syn_data_to_numpy():
         """
         Saves a .csv file with synthetic data to a numpy array
         Returns:

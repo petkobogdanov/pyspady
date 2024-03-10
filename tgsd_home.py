@@ -526,7 +526,7 @@ class TGSD_Home:
                 return data['adj'].dropna().astype(int).values
             if data_type == 'mask':
                 return data['mask'].dropna().astype(np.uint16).values
-
+"""
 #######################################################################################################################
 # Read csv data into DataFrame
 df_X = pd.read_csv('tgsd_demo_data/matlab_demo_X.csv', header=None, dtype=str)
@@ -568,4 +568,5 @@ else:
 tgsd = TGSD_Home('config.json')
 stuff = tgsd.config_run(dataframe=combined_df)
 tgsd.tgsd(stuff[0], stuff[1], stuff[2], stuff[3])
-#######################################################################################################################
+######################################################################################################################
+"""

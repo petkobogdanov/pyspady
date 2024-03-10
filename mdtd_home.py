@@ -13,7 +13,15 @@ class MDTD_Home:
             f"{config_path}")
         self.PhiY, self.recon_t = None, None
 
-    def mdtd(self, is_syn: bool, X, adj1, adj2, mask, count_nnz=10, num_iters_check=0, lam=0.000001, K=10,
+        self.avg_inversion_time = 0
+        self.avg_tensor_recon_time = 0
+        self.avg_mttkrp_time = 0
+
+        self.inversion_count = 0
+        self.tensor_count = 0
+        self.mttkrp_count = 0
+
+    def mdtd(self, is_syn: bool, X, adj1, adj2, mask, count_nnz=10, num_iters_check=10, lam=0.000001, K=10,
              epsilon=1e-4):
         """
         Performs tensor decomposition across multi-dictionaries
@@ -68,19 +76,33 @@ class MDTD_Home:
             Returns:
                 The Matricized Tensor Times Khatri-Rao Product of p_D and p_PhiY along the n-th mode
             """
-            return tl.unfold(p_D, mode=p_n).astype('float32') @ tl.tenalg.khatri_rao(
+            self.mttkrp_count += 1
+            start_mttkrp_time = time.process_time()
+            #return tl.unfold(p_D, mode=p_n).astype('float32') @ tl.tenalg.khatri_rao(
+            #    [p_PhiY[i].astype('float32') for i in range(len(p_PhiY)) if i != p_n])
+            x = tl.unfold(p_D, mode=p_n).astype('float32') @ tl.tenalg.khatri_rao(
                 [p_PhiY[i].astype('float32') for i in range(len(p_PhiY)) if i != p_n])
+            elapsed = time.process_time() - start_mttkrp_time
+            self.avg_mttkrp_time += elapsed
+            #print(f"MTTKRP time: {elapsed}")
+            return x
 
         if is_syn:
             # Generate synthetic data numpy arrays
-            MDTD_Demo_Phi, MDTD_Demo_PhiYg, MDTD_Demo_P = dictionary_generation.GenerateDictionary.save_to_numpy_arrays()
+            MDTD_Demo_Phi, MDTD_Demo_PhiYg, MDTD_Demo_P = mdtd_data_process.MDTD_Data_Process.syn_data_to_numpy()
             self.X = gen_syn_X(MDTD_Demo_PhiYg)  # numpy array of x * y * z
+            X = self.X
             num_modes = self.X.ndim
             lam, rho = gen_syn_lambda_rho(num_modes)  # list of size n
             phi_d = MDTD_Demo_Phi  # list of numpy arrays in form (1, n) where each atom corresponds to a dictionary.
-            phi_type = ['not_ortho_dic', 'no_dic', 'no_dic']
+            phi_type = ['no_dic', 'ortho_dic', 'no_dic']
             # first coordinate of each dictionary = shape of X
             P = MDTD_Demo_P  # Y values of shape of X
+            # Define mask of 10% random indices
+            num_to_mask = int(np.prod(X.shape) * (20 / 100.0))
+            all_indices = np.arange(np.prod(X.shape))
+            self.mask = np.random.choice(all_indices, num_to_mask, replace=False)
+            mask = self.mask
         else:
             X = self.X
             num_modes = X.ndim
@@ -99,7 +121,7 @@ class MDTD_Home:
                 phi_d[0, mode] = nested_dictionary
 
             # phi_type = [random.choice(['not_ortho_dic', 'ortho_dic', 'no_dic']) for _ in range(num_modes)]
-            phi_type = ['no_dic', 'ortho_dic', 'no_dic']
+            phi_type = ['not_ortho_dic', 'ortho_dic', 'ortho_dic']
             P = np.empty((1, num_modes), dtype=object)
 
             for i in range(phi_d.shape[1]):
@@ -192,8 +214,12 @@ class MDTD_Home:
                     # phi_d_rao_other_factors = (phi_d[0, n].T @ mttkrp(D, PhiY, n) + rho[n] * Z[n] - gamma[n])
                     product_vector = np.prod(YPhi_Inner[:, :, list(range(n)) + list(range(n + 1, num_modes))], axis=2)
                     # denominator = product_vector + rho[n] * np.eye(K)
+                    self.inversion_count += 1
+                    start_inversion = time.process_time()
                     Y[n] = np.linalg.solve((product_vector + rho[n] * np.eye(K)).T,
                                            (phi_d[0, n].T @ mttkrp(D, self.PhiY, n) + rho[n] * Z[n] - gamma[n]).T).T
+                    end_inversion = time.process_time() - start_inversion
+                    self.avg_inversion_time += end_inversion
                     normalize_scaling = np.sqrt(np.sum(Y[n] ** 2, axis=0)).reshape(-1, 1).T if i == 1 else np.maximum(
                         np.max(np.abs(Y[n]), axis=0), 1).reshape(-1, 1).T
                     Y[n] /= normalize_scaling
@@ -202,11 +228,15 @@ class MDTD_Home:
 
                 elif phi_type[n] == "no_dic":
                     Y[n] = mttkrp(D, self.PhiY, n)
+                    self.inversion_count += 1
                     # inversion_product_vector = np.prod(YPhi_Inner[:, :, list(range(n)) + list(range(n + 1, num_modes))], axis=2)
+                    start_inversion = time.process_time()
                     Y[n] = np.linalg.solve(
                         (np.prod(YPhi_Inner[:, :, list(range(n)) + list(range(n + 1, num_modes))], axis=2)).T, Y[n].T).T
                     normalize_scaling = np.sqrt(np.sum(Y[n] ** 2, axis=0)).reshape(-1, 1).T if i == 1 else np.maximum(
                         np.max(np.abs(Y[n]), axis=0), 1).reshape(-1, 1).T
+                    end_inversion = time.process_time() - start_inversion
+                    self.avg_inversion_time += end_inversion
                     Y[n] /= normalize_scaling
                     self.PhiY[n] = Y[n]
                     YPhi_Inner[:, :, n] = Y[n].T @ Y[n]
@@ -226,6 +256,8 @@ class MDTD_Home:
             if (isinstance(mask, list) and len(mask) > 0) or (isinstance(mask, np.ndarray) and mask.any()):
                 if isinstance(mask, list): mask = np.array(mask)
                 # set D to reconstructed values and cast to double for mask indexing
+                self.tensor_count += 1
+                start_reconstruction = time.process_time()
                 self.recon_t = tl.kruskal_to_tensor(
                     (normalize_scaling.reshape((normalize_scaling.shape[1],)), [matrix for matrix in self.PhiY]))
                 D = self.recon_t
@@ -238,6 +270,8 @@ class MDTD_Home:
                 nd_indices = np.unravel_index(mask, double_X.shape)
                 missing_mask[nd_indices] = 1
                 D = ((observed_mask - missing_mask) * (self.recon_t + lam[0] * double_X)) / 1 + lam[0]
+                end_reconstruction = time.process_time() - start_reconstruction
+                self.avg_tensor_recon_time += end_reconstruction
             else:
                 D = X
 
@@ -266,8 +300,11 @@ class MDTD_Home:
                     f"Iteration={i} Fit={fit} f-delta={fit_change} Reconstruction Error={recon_error} Sparsity Constraint={sparsity_constraint} Total={objs[i // num_iters_check, :]}")
 
                 if fit_change < epsilon:
-                    print(f"{avg_time}, {i}")
-                    print(f"Algo has met fit change tolerance, avg time: {avg_time / i}")
+                    print(f"Total time: {avg_time}, Iteration: {i}")
+                    print(f"Algo has met fit change tolerance, avg time per 1 iteration: {avg_time / i}")
+                    print(f"Avg tensor time: {self.avg_tensor_recon_time/self.tensor_count}")
+                    print(f"Avg inversion time: {self.avg_inversion_time/self.inversion_count}")
+                    print(f"Avg mttkrp time: {self.avg_mttkrp_time/self.mttkrp_count}")
                     break
 
         # [[S ⊡ Φ1Y1, Φ2Y2, Φ3Y3]
