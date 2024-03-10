@@ -95,7 +95,7 @@ class MDTD_Home:
             num_modes = self.X.ndim
             lam, rho = gen_syn_lambda_rho(num_modes)  # list of size n
             phi_d = MDTD_Demo_Phi  # list of numpy arrays in form (1, n) where each atom corresponds to a dictionary.
-            phi_type = ['no_dic', 'ortho_dic', 'no_dic']
+            phi_type = ['not_ortho_dic', 'not_ortho_dic', 'ortho_dic']
             # first coordinate of each dictionary = shape of X
             P = MDTD_Demo_P  # Y values of shape of X
             # Define mask of 10% random indices
@@ -121,7 +121,7 @@ class MDTD_Home:
                 phi_d[0, mode] = nested_dictionary
 
             # phi_type = [random.choice(['not_ortho_dic', 'ortho_dic', 'no_dic']) for _ in range(num_modes)]
-            phi_type = ['not_ortho_dic', 'ortho_dic', 'ortho_dic']
+            phi_type = ['ortho_dic', 'not_ortho_dic', 'no_dic']
             P = np.empty((1, num_modes), dtype=object)
 
             for i in range(phi_d.shape[1]):

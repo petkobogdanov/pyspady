@@ -2,10 +2,10 @@
     "X": "Taxi_tensor_data/03_tensor_data",
     "adj-1": "Taxi_tensor_data/03_pickup_adjacency.csv",
     "adj-2": "Taxi_tensor_data/03_dropoff_adjacency.csv",
-    "mask_percentage_random": 10,
+    "mask_percentage_random": 5,
     "count_nnz": 0,
     "num_iters_check": 10,
-    "lam": 0.0001,
+    "lam": 0.001,
     "K": 150,
     "epsilon": 0.0001
 }
