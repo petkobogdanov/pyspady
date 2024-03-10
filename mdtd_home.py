@@ -121,7 +121,7 @@ class MDTD_Home:
                 phi_d[0, mode] = nested_dictionary
 
             # phi_type = [random.choice(['not_ortho_dic', 'ortho_dic', 'no_dic']) for _ in range(num_modes)]
-            phi_type = ['ortho_dic', 'not_ortho_dic', 'no_dic']
+            phi_type = ['ortho_dic', 'ortho_dic', 'no_dic']
             P = np.empty((1, num_modes), dtype=object)
 
             for i in range(phi_d.shape[1]):
@@ -173,7 +173,11 @@ class MDTD_Home:
 
         for n in range(len(dimorder)):
             Y_init[n] = np.random.rand(P[0, n][0], K)
-            PhiYInit[n] = (phi_d[0, n] @ Y_init[n]) if phi_type[n] in ["not_ortho_dic", "ortho_dic"] else Y_init[n]
+            PhiYInit[n] = (phi_d[0, n] @ Y_init[n]) if phi_type[n] in ["not_ortho_dic", "ortho_dic"] else Y_init[n] # Note potential error here for Ramanujan dictionary (180, 744)
+            # If Ramanujan dictionary is not "not_dic", PhiYInit entry is 180xK instead of 744xK => phi_d[0, n] entry is 180x744, Y_init entry is 744xK.
+            # Resulting in PhiY of 180xK instead of 744xK and incorrect reconstructed tensor.
+            # Is a potential solution taking the transpose of the Ramanujan instead?
+            # For now, just chose no_dic instead
             YPhiInitInner[:, :, n] = PhiYInit[n].T @ PhiYInit[n] if phi_type[n] == "not_ortho_dic" else Y_init[n].T @ \
                                                                                                         Y_init[n]
             gamma[n] = 0
