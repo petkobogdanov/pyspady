@@ -1,3 +1,4 @@
+import dictionary_generation
 import tgsd_home, tgsd_outlier, tgsd_clustering
 import mdtd_home, mdtd_outlier, mdtd_clustering
 import taxi_demo
@@ -10,7 +11,10 @@ MDTD_Outlier = mdtd_outlier.MDTD_Outlier
 MDTD_Cluster = mdtd_clustering.MDTD_Cluster
 Taxi_Demo = taxi_demo.Taxi_Demo
 
+Gen_Dict = dictionary_generation.GenerateDictionary
+
 if __name__ == '__main__':
+    x = Gen_Dict.gen_spline(24)
     # Fun logo :)
     print(Figlet(font='starwars').renderText('PySpady'))
 
