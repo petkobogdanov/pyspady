@@ -380,7 +380,6 @@ class TGSD_Home:
             case "ram":
                 # psi_d = gen_rama(400, 10)
                 psi_d = dictionary_generation.GenerateDictionary.gen_rama(data.shape[1], 24)
-                pass
             case "gft":
                 # Attempt to load adj_list
                 if dataframe is None:
@@ -407,26 +406,32 @@ class TGSD_Home:
                                                shape=(adj_square_dimension, adj_square_dimension))
                 gft = dictionary_generation.GenerateDictionary.gen_gft_new(sparse_adj_mtx, False)
                 psi_d = gft[0]  # eigenvectors
-                pass
             case "dft":
-                pass
-                # psi_d = gen_dft(200)
+               phi_d = dictionary_generation.GenerateDictionary.gen_dft(data.shape[1])
             case _:
                 raise Exception(f"PSI's dictionary, {config['psi']}, is invalid")
 
         match str(config["phi"]).lower():
             case "ram":
-                # phi_d = gen_rama(400, 10)
-                pass
+                phi_d = dictionary_generation.GenerateDictionary.gen_rama(data.shape[1], 24)
             case "gft":
+                try:
+                    adj_data: np.ndarray[any] = TGSD_Home.parse_data(dataframe, data_type='adj')
+                except Exception as e:
+                    raise Exception(f"Error loading adj_list data from dataframe")
                 # Validate the adjacency matrix's dimension
                 if not ("adj_square_dimension" in config):
-                    raise Exception("PHI's dictionary, GFT, requires 'adj_square_dimension' key")
+                    raise Exception("PSI's dictionary, GFT, requires 'adj_square_dimension' key")
                 adj_square_dimension: int = config["adj_square_dimension"]
                 if not (isinstance(adj_square_dimension, int)):
                     raise Exception(
                         f"Key, 'adj_square_dimension', {adj_square_dimension} is invalid. Please enter a valid int")
-                pass
+
+                rows, cols = adj_data[:, 0], adj_data[:, 1]
+                sparse_adj_mtx = sp.csc_matrix((np.ones_like(rows), (rows, cols)),
+                                               shape=(adj_square_dimension, adj_square_dimension))
+                gft = dictionary_generation.GenerateDictionary.gen_gft_new(sparse_adj_mtx, False)
+                phi_d = gft[0]  # eigenvectors
             case "dft":
                 phi_d = dictionary_generation.GenerateDictionary.gen_dft(data.shape[1])
                 pass
