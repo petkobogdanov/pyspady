@@ -155,8 +155,10 @@ class TGSD_Outlier:
 
         # Determine the number of rows to plot based on user input and sort average value
         sorted_rows = np.argsort(row_avg)[::-1]
+        sorted_smallest = np.argsort(row_avg)
         p_count = min(p_count, 10)
         outlier_rows = sorted_rows[:p_count]
+        antioutlier_rows = sorted_smallest[:p_count]
         num_plots = len(outlier_rows)
 
         # Define grid
@@ -164,39 +166,39 @@ class TGSD_Outlier:
         gs = GridSpec(num_plots, 2)  # Define grid layout for the figure
 
         # Iterate through each row index to build grid
-        for i, row_idx in enumerate(outlier_rows):
-            # Subplot 1: Average Value of the Row Plotted Against the Time Series
+        for i, row_idx in enumerate(antioutlier_rows):
+            # Subplot 1: Plot the "antianomaly" rows, i.e., rows with least deviation
             ax = fig.add_subplot(gs[i, 0])
+            # Assuming the logic for what to plot remains the same, but now focusing on antianomaly rows
+            ax.plot(magnitude_X[row_idx, :], 'b-', label='X')
+            ax.plot(reconstructed_X[row_idx, :], 'g--', label='Reconstructed X')
+            ax.set_ylim(np.min(magnitude_X), np.max(magnitude_X))
+            ax.set_title(f'Antianomaly Row {row_idx}')  # Subplot title
 
-            avg_value = np.mean(p_X[row_idx, :])  # Average value for the outlier row in X
-            time_series = p_Phi[row_idx % p_Phi.shape[0], :]  # Corresponding time series in Phi
-            differences = np.abs(time_series - avg_value)
-            closest_index = np.argmin(
-                differences)  # Index of the minimum difference (in other words, the closest time point for this avg. value)
+            # Add legend to first subplot
+            if i == 0:
+                handles, labels = ax.get_legend_handles_labels()
+                ax.legend(handles, labels, loc='upper left', bbox_to_anchor=(1, 1.3), fontsize='small')
 
-            ax.plot(time_series, color='blue')
-            # Highlight the point closest to the average value
-            ax.scatter(closest_index, time_series[closest_index], color='red', zorder=5)
+            # Enable the xlabel only for bottom subplot
+            if i == num_plots - 1:
+                ax.set_xlabel('Time Index')
+                ax.set_xlabel('Time Index')
+            else:
+                ax.tick_params(labelbottom=False)
+                ax.tick_params(labelbottom=False)
 
-            # Annotate the row index
-            ax.annotate(f'Row {row_idx}', xy=(0.0, 0.95), xycoords='axes fraction',
-                        ha='left', va='top',
-                        fontweight='bold', fontsize=8,
-                        bbox=dict(boxstyle="round,pad=0.3", edgecolor='red', facecolor='white', alpha=0.5))
-
-            # Set y-axis
-            y_min, y_max = time_series.min(), time_series.max()
-            ax.set_ylim(y_min, y_max)
-
+        for i, row_idx in enumerate(outlier_rows):
             # Subplot 2: Plot the Row Values Against Their Reconstructed Values (Fit)
             ax_compare = fig.add_subplot(gs[i, 1])
             ax_compare.plot(magnitude_X[row_idx, :], 'b-', label='X')
             ax_compare.plot(reconstructed_X[row_idx, :], 'g--', label='Reconstructed X')
+            ax_compare.set_title(f'Anomaly Row {row_idx}')  # Subplot title
 
             # Set y-axis
             ax_compare.set_ylim(np.min(magnitude_X), np.max(magnitude_X))
 
-            # Add legend to first subplot
+            # Add legend
             if i == 0:
                 handles, labels = ax_compare.get_legend_handles_labels()
                 ax_compare.legend(handles, labels, loc='upper left', bbox_to_anchor=(1, 1.3), fontsize='small')
@@ -209,9 +211,10 @@ class TGSD_Outlier:
                 ax.tick_params(labelbottom=False)
                 ax_compare.tick_params(labelbottom=False)
 
-            ax.grid(True)
-            ax_compare.grid(True)
+        ax.grid(True)
+        ax_compare.grid(True)
 
+        plt.figtext(0.5, 0.01, "Comparative Analysis of Antianomalies and Anomalies", ha="center", fontsize=14, fontweight='bold')
         plt.subplots_adjust(hspace=0.5, bottom=0.1, right=0.9)
         plt.show()
 
@@ -290,5 +293,6 @@ class TGSD_Outlier:
             ax_compare.grid(True)
 
         # Adjust as needed for visualization
+        plt.figtext(0.5, 0.01, "Comparative Analysis of Antianomalies and Anomalies", ha="center", fontsize=14, fontweight='bold')
         plt.subplots_adjust(hspace=0.6, bottom=0.2, right=0.9)
         plt.show()

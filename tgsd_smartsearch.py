@@ -9,8 +9,8 @@ class CustomEncoder(BaseEstimator, TransformerMixin):
     def __init__(self, config_path, demo, demo_X, demo_Phi, demo_Psi, demo_mask, coefficient_threshold, residual_threshold, K=7, iterations=100, lambda1=0.1,
                  lambda2=0.1, lambda3=1, rho1=0.01, rho2=0.01):
         self.config_path = config_path
-        self.coefficient_threshold = coefficient_threshold
-        self.residual_threshold = residual_threshold
+        self.coefficient_threshold = int(float(coefficient_threshold))
+        self.residual_threshold = int(float(residual_threshold))
         self.best_coefficient_params = None
         self.best_residual_params = None
         self.best_overall_params = None
