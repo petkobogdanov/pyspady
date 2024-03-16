@@ -54,11 +54,11 @@ if __name__ == '__main__':
                 except ValueError:
                     pass
 
-            tgsd_or_mdtd = input("Enter the method for [T]GSD or [M]DTD: ")
+            while (tgsd_or_mdtd := input("Enter the method for [T]GSD or [M]DTD: ")) not in ['T', 'M']: pass
             if tgsd_or_mdtd == "T":
-                while (method := input("Enter a method [p]ickup, [d]ropoff, [b]oth: ")) not in ['p','b','d']:
+                while (method := input("Enter a method [p]ickup or [d]ropoff: ")) not in ['p', 'd']:
                     pass
-                method = 'pickup' if method == 'p' else ('both' if method == 'b' else 'dropoff')
+                method = 'pickup' if method == 'p' else 'dropoff'
 
                 print("Enter the perspective for TGSD.")
                 while (perspective := input("Enter a method [p]point, [r]ow, [c]olumn: ")) not in ['p','r','c']:
@@ -81,7 +81,8 @@ if __name__ == '__main__':
                 Taxi_Demo = taxi_demo.Taxi_Demo(month, method="both", perspective=perspective, auto=False)
                 Taxi_Demo.clean_and_run()
     else:
-        tgsd_or_mdtd = input("Would you like to run [T]GSD or [M]DTD?" )
+        while (tgsd_or_mdtd := input("Enter the method for [T]GSD or [M]DTD: ")) not in ['T', 'M']: pass
+
         if tgsd_or_mdtd == "T":
             print("Do you have a config?")
             while(userinput := input("[y]es, [n]no: ")) not in ['y','n']:
