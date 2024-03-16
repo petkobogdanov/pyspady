@@ -173,10 +173,10 @@ class GenerateDictionary:
             return bspline_basis_recurrence(i, p_degree, p_knot_vector, p_x)
 
         def bspline_basismatrix(p_degree, p_knot_vector, p_x):
-            num_basis_functions = p_knot_vector.shape[1] - p_degree
+            num_basis_functions = p_knot_vector.shape[1] - p_degree + 1
             B = np.zeros((p_x.shape[1], num_basis_functions))
 
-            for i in range(num_basis_functions):
+            for i in range(num_basis_functions-1):
                 B[:, i] = bspline_basis(i, p_degree, p_knot_vector, p_x)
             return B
 
@@ -190,5 +190,5 @@ class GenerateDictionary:
         knot_vector = np.concatenate(([s1] * (p_degree-1), knot_vector, [s2] * (p_degree-1)))
         knot_vector = knot_vector.reshape(1, len(knot_vector))
         x = np.arange(1, p_signal_length+1).reshape(1, p_signal_length)
-        B, _ = bspline_basismatrix(p_degree, knot_vector, x)
+        return bspline_basismatrix(p_degree, knot_vector, x)
 
