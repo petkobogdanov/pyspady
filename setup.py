@@ -25,6 +25,7 @@ setuptools.setup(
         'geopy',            # For geocoding and other geographic computations
         'scikit-learn',     # For ParameterSampler, BaseEstimator, TransformerMixin
         'pyproj',           # Coordinate transformations used in demo modules
+        'scikit-learn'      # "Smart-search" modules
     ],
     classifiers=[
         "Programming Language :: Python :: 3",
