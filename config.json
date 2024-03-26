@@ -1,7 +1,7 @@
 {
     "x": "tgsd_demo_data/matlab_demo_X.csv",
     "psi": "GFT",
-    "phi": "DFT",
+    "phi": "ram",
     "mask_mode": "PATH",
     "mask_percent": 40,
     "save_flag": false,
@@ -9,9 +9,7 @@
     "save_path": "save.match",
     "load_flag": false,
     "load_path": "save.match",
-    "first_x_dimension": 200,
     "adj_square_dimension": 175,
-    "second_x_dimension": 175,
     "adj_path": "tgsd_demo_data/matlab_demo_adj.csv",
     "mask_path": "tgsd_demo_data/matlab_demo_mask.csv"
 }

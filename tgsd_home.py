@@ -326,18 +326,6 @@ class TGSD_Home:
             raise Exception("Config must contain the 'mask_mode' key")
         if not ("mask_percent" in config):
             raise Exception("Config must contain the 'mask_percent' key")
-        if not ("first_x_dimension" in config):
-            raise Exception("Config must contain the 'first_x_dimension' key")
-        if not ("second_x_dimension" in config):
-            raise Exception("Config must contain the 'second_x_dimension' key")
-
-        # Validate the first and second dimensions of x
-        first_x_dimension: int = config["first_x_dimension"]
-        second_x_dimension: int = config["second_x_dimension"]
-        if not (isinstance(first_x_dimension, int)):
-            raise Exception(f"Key 'first_x_dimension', {first_x_dimension}, is invalid. Please enter a valid int")
-        if not (isinstance(second_x_dimension, int)):
-            raise Exception(f"Key 'second_x_dimension', {second_x_dimension}, is invalid. Please enter a valid int")
 
         psi: str = str(config["psi"]).lower()
         phi: str = str(config["phi"]).lower()
@@ -407,7 +395,9 @@ class TGSD_Home:
                 gft = dictionary_generation.GenerateDictionary.gen_gft_new(sparse_adj_mtx, False)
                 psi_d = gft[0]  # eigenvectors
             case "dft":
-               phi_d = dictionary_generation.GenerateDictionary.gen_dft(data.shape[1])
+                psi_d = dictionary_generation.GenerateDictionary.gen_dft(data.shape[0])
+            case "spline":
+                psi_d = dictionary_generation.GenerateDictionary.gen_spline(data.shape[0])
             case _:
                 raise Exception(f"PSI's dictionary, {config['psi']}, is invalid")
 
@@ -435,6 +425,8 @@ class TGSD_Home:
             case "dft":
                 phi_d = dictionary_generation.GenerateDictionary.gen_dft(data.shape[1])
                 pass
+            case "spline":
+                phi_d = dictionary_generation.GenerateDictionary.gen_spline(data.shape[1]).T
             case _:
                 raise Exception(f"PHI's dictionary, {config['phi']}, is invalid")
 
