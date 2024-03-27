@@ -15,10 +15,14 @@
 - [Proshanto Dabnath](https://github.com/proshantod)
 - [Michael A. Smith](https://github.com/Homercat1234)
 - [Joseph Regan](https://github.com/reganjoseph)
+## Sponsors
+- [Dr. Petko Bogdanov](https://github.com/petkobogdanov/)
+- [Maxwell McNeil](https://github.com/maxwell13)
+- [Boya Ma]()
 
 ## Introduction
 
-PySpady enables users from all disciplines to leverage state-of-the-art and classical sparse encoding algorithms and methodologies to jointly model **spatial-temporal data** by graph and temporal dictionaries. The current implementation efficiently exploits both structural graph regularities and temporal patterns encoded within **2D temporal graph signals** (McNeil et. al, 2021) and more generally any **multi-way tensors** (McNeil and Bogdanov, 2023) with priors on all or a subset of modes.
+PySpady enables users from all disciplines to leverage state-of-the-art and classical sparse encoding algorithms and methodologies to jointly model **spatial-temporal data** by graph and temporal dictionaries. The current implementation efficiently exploits both structural graph regularities and temporal patterns encoded within [**2D temporal graph signals**](https://www.cs.albany.edu/~petko/lab/papers/mzb2021kdd.pdf) and more generally any [**multi-way tensors**](https://arxiv.org/abs/2309.09717) with priors on all or a subset of modes.
 
 ## Current features
 - [x] Missing value imputation
@@ -28,25 +32,40 @@ PySpady enables users from all disciplines to leverage state-of-the-art and clas
 - [x] Outlier detection with visualizations
 - [x] Community detection with visualizations
 - [x] Command-line interface
-- [x] Demonstration datasets    
+- [x] Demonstration datasets
+
+### Supported Dictionaries
+
+| Transform/Basis Function | Description | Example Use Case(s) | Application(s) |
+| --- | --- | --- | --- |
+| [Graph Fourier Transform (GFT)](https://en.wikipedia.org/wiki/Graph_Fourier_transform) | Generalizes the Fourier Transform to signals defined on graphs or irregular domains. | Data on non-Euclidean domains, e.g., social networks, sensor networks, biological networks. | Signal denoising, clustering, dimensionality reduction.
+| [Discrete Fourier Transform (DFT)](https://en.wikipedia.org/wiki/Discrete_Fourier_transform) | Decomposes a discrete-time signal into frequency components. | Digital signal processing, e.g., filtering, compression, and spectral analysis. | Communications, audio/video processing, and scientific computing. |
+| [Ramanujan Periodic Transform](https://en.wikipedia.org/wiki/Ramanujan%27s_sum) | Represents periodic signals as a sum of trigonometric functions with specific frequencies. | Signals with periodic behavior as seen in astronomy, biology, and physics. | Signal compression, feature extraction, and pattern recognition in periodic data. |
+| [Basis Spline (B-Spline)](https://en.wikipedia.org/wiki/B-spline) | Piecewise polynomial functions used as basis functions for representing and manipulating curves and surfaces. | Local control, maximizing computational efficiency, and smooth interpolation/approximation. | Computer graphics, curve/surface modeling, and data fitting. |
 
 ## Installation
 [Clone](https://docs.github.com/en/repositories/creating-and-managing-repositories/cloning-a-repository) this repository's main branch and run the following terminal command in the PySpady directory to download the required dependencies:
 ```
 pip3 install .
 ```
+For signal decomposition, input data in the ```config.json``` file. For tensor decomposition, input data in the ```mdtd_config.json``` file. GFT usage requires an adjacency matrix as input in the respective configuration file.
+
+Run the driver.py file to begin.
+```
+python3 driver.py
+```
+
 Please make sure you already have the latest version of [![Python](https://img.shields.io/badge/Python-3776AB?style=flat&logo=python&logoColor=white)](https://www.python.org/) and [![Pip](https://img.shields.io/badge/pip-3776AB?style=flat&logo=pypi&logoColor=white)](https://pypi.org/) installed.
 
 ### Datasets
 
 There are numerous datasets available for use in the PySpady library. Due to storage limitations, certain datasets cannot be stored on the Git repository and must be downloaded externally.
 
-- [New York City taxi pickup and dropoff data, circa 2017: 2D temporal graph signal]()
-- [New York City taxi pickup and dropoff data, circa 2017: Multi-way tensors]()
-- [Multi-way tensors synthetic data]()
+- [New York City taxi pickup and dropoff data, circa 2017: 2D temporal graph signal](). Matrix reconstruction utilizes a GFT and Ramanujan periodic dictionary.
+- [New York City taxi pickup and dropoff data, circa 2017: Multi-way tensors](). Mode-3 tensor reconstruction utilizes a GFT and two Ramanujan periodic dictionaries.
+- [Multi-way tensors synthetic data](). Mode-3 tensor reconstruction utilizes a GFT, a DFT, and a Ramanujan periodic dictionary.
 
-2D temporal graph signal synthetic data is already available.
-
+2D temporal graph signal synthetic data is already available. The matrix reconstruction utilizes a GFT and a DFT.
 
 --------
 # pyspady
