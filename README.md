@@ -1,3 +1,54 @@
+<div align="center">
+  <img src="assets/pyspady-logo.png" alt="PySpady Logo">
+</div>
+
+# PySpady: A Python sparse multi-dictionary coding library
+[![Python](https://img.shields.io/badge/Python-3776AB?style=for-the-badge&logo=python&logoColor=white)](https://www.python.org/)
+[![NumPy](https://img.shields.io/badge/NumPy-013243?style=for-the-badge&logo=numpy&logoColor=white)](https://numpy.org/)
+[![SciPy](https://img.shields.io/badge/SciPy-8CACEA?style=for-the-badge&logo=scipy&logoColor=white)](https://scipy.org/)
+[![TensorLy](https://img.shields.io/badge/TensorLy-FF6F61?style=for-the-badge&logo=tensorly&logoColor=white)](https://tensorly.org/stable/index.html)
+[![Pandas](https://img.shields.io/badge/Pandas-150458?style=for-the-badge&logo=pandas&logoColor=white)](https://pandas.pydata.org/)
+[![SKLearn](https://img.shields.io/badge/scikit--learn-F7931E?style=for-the-badge&logo=scikit-learn&logoColor=white)](https://scikit-learn.org/)
+[![MatPlotLib](https://img.shields.io/badge/Matplotlib-239120?style=for-the-badge&logo=matplotlib&logoColor=white)](https://matplotlib.org/)
+## Authors
+- [Michael J. Paglia](https://github.com/michaelpaglia)
+- [Proshanto Dabnath](https://github.com/proshantod)
+- [Michael A. Smith](https://github.com/Homercat1234)
+- [Joseph Regan](https://github.com/reganjoseph)
+
+## Introduction
+
+PySpady enables users from all disciplines to leverage state-of-the-art and classical sparse encoding algorithms and methodologies to jointly model **spatial-temporal data** by graph and temporal dictionaries. The current implementation efficiently exploits both structural graph regularities and temporal patterns encoded within **2D temporal graph signals** (McNeil et. al, 2021) and more generally any **multi-way tensors** (McNeil and Bogdanov, 2023) with priors on all or a subset of modes.
+
+## Current features
+- [x] Missing value imputation
+- [x] Future value prediction
+- [x] Automatic hyperparameter optimization
+- [x] [![JSON](https://img.shields.io/badge/JSON-8A2BE2?style=flat&logo=json&logoColor=white)](https://www.json.org/json-en.html) [![Pandas](https://img.shields.io/badge/pandas-150458?style=flat&logo=pandas&logoColor=white)](https://pandas.pydata.org/) user input configurations
+- [x] Outlier detection with visualizations
+- [x] Community detection with visualizations
+- [x] Command-line interface
+- [x] Demonstration datasets    
+
+## Installation
+[Clone](https://docs.github.com/en/repositories/creating-and-managing-repositories/cloning-a-repository) this repository's main branch and run the following terminal command in the PySpady directory to download the required dependencies:
+```
+pip3 install .
+```
+Please make sure you already have the latest version of [![Python](https://img.shields.io/badge/Python-3776AB?style=flat&logo=python&logoColor=white)](https://www.python.org/) and [![Pip](https://img.shields.io/badge/pip-3776AB?style=flat&logo=pypi&logoColor=white)](https://pypi.org/) installed.
+
+### Datasets
+
+There are numerous datasets available for use in the PySpady library. Due to storage limitations, certain datasets cannot be stored on the Git repository and must be downloaded externally.
+
+- [New York City taxi pickup and dropoff data, circa 2017: 2D temporal graph signal]()
+- [New York City taxi pickup and dropoff data, circa 2017: Multi-way tensors]()
+- [Multi-way tensors synthetic data]()
+
+2D temporal graph signal synthetic data is already available.
+
+
+--------
 # pyspady
 PySpady - a Python sparse multi dictionary coding library
 
