@@ -20,7 +20,7 @@ if __name__ == '__main__':
 
     while True:
         print("Welcome to PySpady, developed by Michael Paglia, Michael Smith, Joseph Regan, and Proshanto Dabnath.")
-        print("Before starting, would you like to see some demo data?")
+        print("Before starting, would you like to see some real-world demonstration data?")
         while (userinput := input("[y]es, [n]o: ")) not in ['y', 'n']:
             pass
         if(userinput == 'y'):
@@ -67,108 +67,97 @@ if __name__ == '__main__':
             while (tgsd_or_mdtd := input("Enter the method for [T]GSD or [M]DTD: ")) not in ['T', 'M']: pass
 
             if tgsd_or_mdtd == "T":
-                print("Do you have a config file already set up?")
-                while(userinput := input("[y]es, [n]o: ")) not in ['y','n']:
+                while (synorno := input("Would you like to use the synthetic data first as an example? [y]es, [n]o: ")) not in ['y', 'n']:
                     pass
-                if(userinput == 'y'):
-                    print("Is the path different from config.json?")
-                    while(userinput := input("[y]es, [n]o: ")) not in ['y','n']:
-                        pass
-                    path = input("Enter path: ") if userinput == 'y' else "config.json"
-                    [x, psi_d, phi_d, mask] = tgsd_home.TGSD_Home(path).config_run(config_path = path)
-                    Y, W = tgsd_home.TGSD_Home(path).tgsd(x, psi_d, phi_d, mask)
+                if synorno == "y":
+                    [x, psi_d, phi_d, mask] = tgsd_home.TGSD_Home("tgsd_syn_config.json").config_run(config_path="tgsd_syn_config.json")
+                    tgsd_home.TGSD_Home("tgsd_syn_config.json").tgsd(x, psi_d, phi_d, mask)
 
                 else:
-                    print("Would you like to use the autoconfig?")
+                    print("Do you have a config file already set up?")
                     while(userinput := input("[y]es, [n]o: ")) not in ['y','n']:
                         pass
                     if(userinput == 'y'):
-                        residual_percent = input("Residual % [0.0, 0.99]: ")
-                        coefficient_percent = input("Coefficient % [0.0, 0.99]: ")
-                        tgsd_smartsearch = tgsd_smartsearch.CustomEncoder(config_path="config.json", demo=False,demo_X=None,demo_Phi=None,demo_Psi=None,demo_mask=None, coefficient_threshold=coefficient_percent, residual_threshold=residual_percent)
-                        tgsd_smartsearch.run_smart_search()
-                        Y, W = tgsd_smartsearch.get_Y_W()
+                        print("Is the path different from config.json?")
+                        while(userinput := input("[y]es, [n]o: ")) not in ['y','n']:
+                            pass
+                        path = input("Enter path: ") if userinput == 'y' else "config.json"
+                        [x, psi_d, phi_d, mask] = tgsd_home.TGSD_Home(path).config_run(config_path = path)
+                        Y, W = tgsd_home.TGSD_Home(path).tgsd(x, psi_d, phi_d, mask)
+
                     else:
-                        print("What would you like the created config file's path to be?")
-                        config_path = input("Enter a path: ")
-
-                        print("What is the path for the CSV?")
-                        csv_path = input("Enter a path: ")
-
-                        print("Enter a dictionary for PSI.")
-                        while(psi_d := input("[g]ft, [r]am, [d]ft: ")) not in ['g', 'r', 'd']:
+                        print("Would you like to use the autoconfig?")
+                        while(userinput := input("[y]es, [n]o: ")) not in ['y','n']:
                             pass
-                        psi_d = 'gft' if psi_d == 'g' else ('ram' if psi_d == 'r' else 'dft')
+                        if(userinput == 'y'):
+                            residual_percent = input("Residual % [0.0, 0.99]: ")
+                            coefficient_percent = input("Coefficient % [0.0, 0.99]: ")
+                            tgsd_smartsearch = tgsd_smartsearch.CustomEncoder(config_path="config.json", demo=False,demo_X=None,demo_Phi=None,demo_Psi=None,demo_mask=None, coefficient_threshold=coefficient_percent, residual_threshold=residual_percent)
+                            tgsd_smartsearch.run_smart_search()
+                            Y, W = tgsd_smartsearch.get_Y_W()
+                        else:
+                            print("What would you like the created config file's path to be?")
+                            config_path = input("Enter a path: ")
 
-                        print("Enter a dictionary for PHI.")
-                        while(phi_d := input("[g]ft, [r]am, [d]ft: ")) not in ['g', 'r', 'd']:
-                            pass
-                        phi_d = 'gft' if phi_d == 'g' else ('ram' if phi_d == 'r' else 'dft')
+                            print("What is the path for the CSV?")
+                            csv_path = input("Enter a path: ")
 
-                        print("Enter a mask mode for TGSD.")
-                        while(mask_mode := input("[l]inear, [r]andom, [p]ath: ")) not in ['l', 'r', 'p']:
-                            pass
-                        mask_mode = 'lin' if mask_mode == 'l' else ('rand' if mask_mode == 'r' else 'path')
-
-                        if(mask_mode == 'path'):
-                            print("Please enter a mask path.")
-                            mask_path = input("Enter a path: ")
-
-                        print("Please enter the the mask percent.")
-                        while True: # So the program doesn't crash on non-numeric input
-                            try:
-                                if mask_percent := int(input("Enter a number [1-100]: ")) in range(1, 101):
-                                    break
-                            except ValueError:
+                            print("Enter a dictionary for PSI.")
+                            while(psi_d := input("[g]ft, [r]am, [d]ft: ")) not in ['g', 'r', 'd']:
                                 pass
+                            psi_d = 'gft' if psi_d == 'g' else ('ram' if psi_d == 'r' else 'dft')
 
-                        print("Please enter the first dimension of the data as a numerical value.")
-                        while True: # So the program doesn't crash on non-numeric input
-                            try:
-                                if first_x_dimension := int(input("Enter a number: ")):
-                                    break
-                            except ValueError:
+                            print("Enter a dictionary for PHI.")
+                            while(phi_d := input("[g]ft, [r]am, [d]ft: ")) not in ['g', 'r', 'd']:
                                 pass
+                            phi_d = 'gft' if phi_d == 'g' else ('ram' if phi_d == 'r' else 'dft')
 
-                        print("Please enter the second dimension of the data as a numerical value.")
-                        while True: # So the program doesn't crash on non-numeric input
-                            try:
-                                if second_x_dimension := int(input("Enter a number: ")):
-                                    break
-                            except ValueError:
+                            print("Enter a mask mode for TGSD.")
+                            while(mask_mode := input("[l]inear, [r]andom, [p]ath: ")) not in ['l', 'r', 'p']:
                                 pass
+                            mask_mode = 'lin' if mask_mode == 'l' else ('rand' if mask_mode == 'r' else 'path')
 
-                        print("Please enter the dimension of the adjacency list as a numerical value.")
-                        while True: # So the program doesn't crash on non-numeric input
-                            try:
-                                if adj_square_dimension := int(input("Enter a number: ")):
-                                    break
-                            except ValueError:
-                                pass
+                            if(mask_mode == 'path'):
+                                print("Please enter a mask path.")
+                                mask_path = input("Enter a path: ")
 
-                        print("Please enter the path for the adjacency list.")
-                        adj_path = input("Enter a path: ")
+                            print("Please enter the the mask percent.")
+                            while True: # So the program doesn't crash on non-numeric input
+                                try:
+                                    if mask_percent := int(input("Enter a number [1-100]: ")) in range(1, 101):
+                                        break
+                                except ValueError:
+                                    pass
 
-                        config_json = {
-                            'x': csv_path,
-                            'adj_path': adj_path,
-                            'psi': psi_d,
-                            'phi': phi_d,
-                            'mask_mode': mask_mode,
-                            'mask_percent': mask_percent,
-                            'first_x_dimension': first_x_dimension,
-                            'second_x_dimension': second_x_dimension,
-                            'adj_square_dimension': adj_square_dimension
-                        }
+                            print("Please enter the dimension of the adjacency list as a numerical value.")
+                            while True: # So the program doesn't crash on non-numeric input
+                                try:
+                                    if adj_square_dimension := int(input("Enter a number: ")):
+                                        break
+                                except ValueError:
+                                    pass
 
-                        if mask_mode == 'path':
-                            config_json['mask_path'] = mask_path
+                            print("Please enter the path for the adjacency list.")
+                            adj_path = input("Enter a path: ")
 
-                        with open(config_path, "w") as outfile:
-                            json.dump(config_json, outfile)
+                            config_json = {
+                                'x': csv_path,
+                                'adj_path': adj_path,
+                                'psi': psi_d,
+                                'phi': phi_d,
+                                'mask_mode': mask_mode,
+                                'mask_percent': mask_percent,
+                                'adj_square_dimension': adj_square_dimension
+                            }
 
-                        [x, psi_d, phi_d, mask] = tgsd_home.TGSD_Home(config_path).config_run(config_path = config_path)
-                        tgsd_home.TGSD_Home(config_path).tgsd(x, psi_d, phi_d, mask)
+                            if mask_mode == 'path':
+                                config_json['mask_path'] = mask_path
+
+                            with open(config_path, "w") as outfile:
+                                json.dump(config_json, outfile)
+
+                            [x, psi_d, phi_d, mask] = tgsd_home.TGSD_Home(config_path).config_run(config_path = config_path)
+                            tgsd_home.TGSD_Home(config_path).tgsd(x, psi_d, phi_d, mask)
 
                 print("Would you like to perform downstream tasks on your output? ")
                 userinput = input("[y]es, [n]o: ")
@@ -230,7 +219,7 @@ if __name__ == '__main__':
                         num_clusters = input("How many clusters would you like to plot? The maximum is 10. ")
                         mdtd_clustering.MDTD_Cluster.mdtd_clustering(phi_y, int(num_clusters))
 
-            q = input("Would you like to quit? [y]es, [n]o")
+            q = input("Would you like to quit? [y]es, [n]o ")
             if q == "y":
                 print("Quitting PySpady...")
                 break
