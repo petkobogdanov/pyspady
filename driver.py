@@ -181,7 +181,7 @@ if __name__ == '__main__':
                         tgsd_clustering.TGSD_Cluster.cluster(psi_d, Y)
 
             else:
-                while (synorno := input("Would you like to use the synthetic data first as an example? [y]es, [n]o: ")) not in ['y', 'n']:
+                while (synorno := input("Would you like to use the synthetic data first as an example? \n[y]es, [n]o: ")) not in ['y', 'n']:
                     pass
                 if synorno == "n":
                     print("Do you have a config?")
@@ -209,17 +209,12 @@ if __name__ == '__main__':
                         while (perspective := input("Enter a slice method [x]-axis, [y]-axis, [z]-axis: ")) not in ['x','y','z']:
                             pass
                         count_outlier = input("How many outliers would you like to plot? The maximum that can be plotted on a graph is 10. ")
-                        if perspective == "x":
-                            mdtd_outlier.MDTD_Outlier.mdtd_find_outlier(tensor, recon_t, int(count_outlier), x)
-                        elif perspective == "y":
-                            mdtd_outlier.MDTD_Outlier.mdtd_find_outlier(tensor, recon_t, int(count_outlier), y)
-                        else:
-                            mdtd_outlier.MDTD_Outlier.mdtd_find_outlier(tensor, recon_t, int(count_outlier), z)
+                        mdtd_outlier.MDTD_Outlier.mdtd_find_outlier(tensor, recon_t, int(count_outlier), perspective)
                     else:
                         num_clusters = input("How many clusters would you like to plot? The maximum is 10. ")
                         mdtd_clustering.MDTD_Cluster.mdtd_clustering(phi_y, int(num_clusters))
 
-            q = input("Would you like to quit? [y]es, [n]o ")
+            q = input("Would you like to quit? \n [y]es, [n]o ")
             if q == "y":
                 print("Quitting PySpady...")
                 break

@@ -1,7 +1,10 @@
 {
-    "X": "Taxi_tensor_data/03_tensor_data",
-    "adj-1": "Taxi_tensor_data/03_pickup_adjacency.csv",
-    "adj-2": "Taxi_tensor_data/03_dropoff_adjacency.csv",
+    "X": "Taxi_tensor_data/04_tensor_data",
+    "dictionary-1": "GFT",
+    "dictionary-2": "GFT",
+    "dictionary-3": "spline",
+    "adj-1": "Taxi_tensor_data/04_pickup_adjacency.csv",
+    "adj-2": "Taxi_tensor_data/04_dropoff_adjacency.csv",
     "mask_percentage_random": 1,
     "count_nnz": 0,
     "num_iters_check": 10,

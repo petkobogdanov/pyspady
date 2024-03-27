@@ -103,7 +103,7 @@ class MDTD_Outlier:
             ax.set_xlabel('Row Index')
             ax.set_ylabel('Column Index')
             ax.set_zlabel('Pane Index')
-            ax.set_title('Top 10 Panes by Average Magnitude')
+            ax.set_title(f'Top {p_count} X Panes by Average Magnitude')
 
             # Adjust the legend and the view angle
             ax.legend(loc='center left', bbox_to_anchor=(1.1, 0.5), title='Pane Number')
@@ -139,7 +139,7 @@ class MDTD_Outlier:
             ax.set_xlabel('Row Index')
             ax.set_ylabel('Column Index')
             ax.set_zlabel('Pane Index')
-            ax.set_title('Top 10 Y Panes by Average Magnitude')
+            ax.set_title(f'Top {p_count} Y Panes by Average Magnitude')
 
             # Adjust the legend and the view angle
             ax.legend(loc='center left', bbox_to_anchor=(1.1, 0.5), title='Pane Number')
@@ -180,7 +180,7 @@ class MDTD_Outlier:
             ax.set_xlabel('Row Index')
             ax.set_ylabel('Column Index')
             ax.set_zlabel('Pane Index')
-            ax.set_title('Top 10 Z Panes by Average Magnitude')
+            ax.set_title(f'Top {p_count} Z Panes by Average Magnitude')
 
             # Adjust the legend and the view angle
             ax.legend(loc='center left', bbox_to_anchor=(1.1, 0.5), title='Pane Number')
