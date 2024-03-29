@@ -32,22 +32,22 @@ Todo
   
 4. Auto config 
    1. auto parameter selections 
-   2. graph learning
+   2. graph learning (Not implemented)
    3. estimate time to complete 
    4. return explanatory figs?
       
-5. Different optimizers 
+5. Different optimizers (Not implemented)
    1. gradient based
    2. OMP for differnt mod
       
-6. Other Models  
+6. Other Models (Not implemented)
    1. 2D-OMP
    2. Low Rank Dictionary Selection 
    3. Different regualriers
    4. coloums sparsity
    5. Can we implement non-negataive on  a dictionary times co-efficents?
       
-7. Dictionary selection
+7. Dictionary selection (Not implemented)
    1. 1D Screening
    2. Scaling to large graphs
       
