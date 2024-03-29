@@ -18,17 +18,17 @@ Testing
 
 Todo
 
-1. Some dictionaries
+1. Some dictionaries (Edit: added B-Spline)
    
 3. Front end
    1. data formats (mask as well)
-    * matrix input
-    * row,col, etc. value inputs 
+    * matrix input 
+    * row,col, etc. value inputs  
     * enter csv
     * pandas dataframe
    1. make defaul parameters
    2. config parameters 
-   3. how to return missing values 
+   3. how to return missing values (Not implemented)
   
 4. Auto config 
    1. auto parameter selections 
@@ -51,7 +51,7 @@ Todo
    1. 1D Screening
    2. Scaling to large graphs
       
-8. Prep datasets as use cases 
+8. Prep datasets as use cases (Edit: NYC taxi data integrated)
   
 -------------------------------------------------------------------------------------
 
