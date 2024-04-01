@@ -28,15 +28,15 @@ Todo
     * pandas dataframe
    1. make defaul parameters
    2. config parameters 
-   3. how to return missing values (Not implemented)
+   3. how to return missing values (Not implemented --- Petko: Priority High)
   
 4. Auto config 
    1. auto parameter selections 
-   2. graph learning (Not implemented)
+   2. graph learning (Not implemented  --- Petko: Priority Low)
    3. estimate time to complete 
    4. return explanatory figs?
       
-5. Different optimizers (Not implemented)
+5. Different optimizers (Not implemented --- Petko: Priority High: we need to meet and discuss, Boya has implementations of gradient descent)
    1. gradient based
    2. OMP for differnt mod
       
@@ -47,11 +47,11 @@ Todo
    4. coloums sparsity
    5. Can we implement non-negataive on  a dictionary times co-efficents?
       
-7. Dictionary selection (Not implemented)
+7. Dictionary selection (Not implemented --- Petko: Priority Medium)
    1. 1D Screening
    2. Scaling to large graphs
       
-8. Prep datasets as use cases (Edit: NYC taxi data integrated)
+8. Prep datasets as use cases (Edit: NYC taxi data integrated --- Petko: Priority High - adding more datasets will be important)
   
 -------------------------------------------------------------------------------------
 
