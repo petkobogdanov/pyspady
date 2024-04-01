@@ -24,7 +24,7 @@ if __name__ == '__main__':
         while (userinput := input("[y]es, [n]o: ")) not in ['y', 'n']:
             pass
         if(userinput == 'y'):
-            print("1.) Taxi Demo")
+            print("1.) Taxi Demo: This dataset contains taxi pickup and dropoff volume across over 300 locations in NYC in 2017.")
             while(userinput := input("Enter number [1-1]: ")) not in ['1']:
                 pass
             if(userinput == '1'):
@@ -39,16 +39,16 @@ if __name__ == '__main__':
 
                 while (tgsd_or_mdtd := input("Enter the method for [T]GSD or [M]DTD: ")) not in ['T', 'M']: pass
                 if tgsd_or_mdtd == "T":
-                    while (method := input("Enter a method [p]ickup or [d]ropoff: ")) not in ['p', 'd']:
+                    while (method := input("Enter a method for taxi [p]ickups or [d]ropoffs: ")) not in ['p', 'd']:
                         pass
                     method = 'pickup' if method == 'p' else 'dropoff'
 
-                    print("Enter the perspective for TGSD.")
+                    print("Enter the perspective for TGSD. This determines how you choose to view outliers, where rows represent physical locations and columns represent time. ")
                     while (perspective := input("Enter a method [p]point, [r]ow, [c]olumn: ")) not in ['p','r','c']:
                         pass
                     perspective = 'point' if perspective == 'p' else ('col' if perspective == 'c' else 'row')
 
-                    print("Please designate whether to run auto search.")
+                    print("Please designate whether to run auto search. This will automatically search for an optimal combination of hyperparameters.")
                     while (auto := input("Would you like to run auto search; [y]es, [n]o: ")) not in ['y','n']:
                         pass
                     auto = True if auto == 'y' else False
@@ -71,7 +71,7 @@ if __name__ == '__main__':
                     pass
                 if synorno == "y":
                     [x, psi_d, phi_d, mask] = tgsd_home.TGSD_Home("tgsd_syn_config.json").config_run(config_path="tgsd_syn_config.json")
-                    tgsd_home.TGSD_Home("tgsd_syn_config.json").tgsd(x, psi_d, phi_d, mask)
+                    Y, W = tgsd_home.TGSD_Home("tgsd_syn_config.json").tgsd(x, psi_d, phi_d, mask)
 
                 else:
                     print("Do you have a config file already set up?")
@@ -82,7 +82,7 @@ if __name__ == '__main__':
                         while(userinput := input("[y]es, [n]o: ")) not in ['y','n']:
                             pass
                         path = input("Enter path: ") if userinput == 'y' else "config.json"
-                        [x, psi_d, phi_d, mask] = tgsd_home.TGSD_Home(path).config_run(config_path = path)
+                        [x, psi_d, phi_d, mask] = tgsd_home.TGSD_Home(path).config_run(config_path=path)
                         Y, W = tgsd_home.TGSD_Home(path).tgsd(x, psi_d, phi_d, mask)
 
                     else:
@@ -157,8 +157,14 @@ if __name__ == '__main__':
                                 json.dump(config_json, outfile)
 
                             [x, psi_d, phi_d, mask] = tgsd_home.TGSD_Home(config_path).config_run(config_path = config_path)
-                            tgsd_home.TGSD_Home(config_path).tgsd(x, psi_d, phi_d, mask)
+                            Y, W = tgsd_home.TGSD_Home(config_path).tgsd(x, psi_d, phi_d, mask)
 
+                print(f"Would you like to return {mask.shape[1]} missing (masked) values? ")
+                userinput = input("[y]es, [n]o ")
+                if userinput == "y":
+                    # Returns missing values, downloads new CSV and displays graph of imputed values
+                    tgsd_home.TGSD_Home.return_missing_values(mask, psi_d, phi_d, Y, W)
+                    print(f".csv of {mask.shape[1]} imputed values downloaded to imputed_values.csv.")
                 print("Would you like to perform downstream tasks on your output? ")
                 userinput = input("[y]es, [n]o: ")
                 if userinput == "y":
@@ -214,7 +220,7 @@ if __name__ == '__main__':
                         num_clusters = input("How many clusters would you like to plot? The maximum is 10. ")
                         mdtd_clustering.MDTD_Cluster.mdtd_clustering(phi_y, int(num_clusters))
 
-            q = input("Would you like to quit? \n [y]es, [n]o ")
+            q = input("Would you like to quit?\n[y]es, [n]o ")
             if q == "y":
                 print("Quitting PySpady...")
                 break

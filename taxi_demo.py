@@ -142,10 +142,15 @@ class Taxi_Demo:
             TGSD_Driver.X = d
             TGSD_Driver.Psi_D = GenDict.gen_gft_new(adj_matrix, False)[0]
             TGSD_Driver.Phi_D = GenDict.gen_rama(t=d.shape[1], max_period=24)
-            TGSD_Driver.mask = np.random.randint(0, 65536, size=(1, 3500), dtype=np.uint16)
+            size_y = int(.1*adj_matrix.shape[0]*adj_matrix.shape[1])
+            TGSD_Driver.mask = np.random.randint(0, 65536, size=(1, size_y), dtype=np.uint16)
 
             if not self.auto:
                 Y, W = TGSD_Driver.tgsd(TGSD_Driver.X, TGSD_Driver.Psi_D, TGSD_Driver.Phi_D, TGSD_Driver.mask)
+                print(f"Imputing {TGSD_Driver.mask.shape[1]} masked values...")
+                TGSD_Driver.return_missing_values(TGSD_Driver.mask, TGSD_Driver.Psi_D, TGSD_Driver.Phi_D, Y, W)
+                # Returns missing values, downloads new CSV and displays graph of imputed values
+                print(f".csv of {TGSD_Driver.mask.shape[1]} imputed values downloaded to imputed_values.csv.")
             else:
                 # Run smart search using thresholds of 0.3 and 0.3. Change accordingly.
                 # If demo is changed to False, default values of X/Psi/Phi/mask will be loaded in.

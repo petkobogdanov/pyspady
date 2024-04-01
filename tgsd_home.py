@@ -8,6 +8,7 @@ from W_unittest import TestWConversion
 import json
 import random
 import dictionary_generation
+import matplotlib.pyplot as plt
 
 
 class TGSD_Home:
@@ -523,6 +524,35 @@ class TGSD_Home:
                 return data['adj'].dropna().astype(int).values
             if data_type == 'mask':
                 return data['mask'].dropna().astype(np.uint16).values
+
+    @staticmethod
+    def return_missing_values(p_mask, p_psi, p_phi, p_Y, p_W):
+        """
+        Reconstructs matrix and downloads .csv with missing values from mask.
+        Args:
+            p_mask: Given mask as linear indices.
+            p_psi: Graph-prior dictionary.
+            p_phi: Time-prior dictionary.
+            p_Y: Encoding matrix obtained from TGSD.
+            p_W: Encoding matrix obtained from TGSD.
+
+        Returns:
+            .csv file of missing values of the form {row_index, col_index, value}.
+        """
+        reconstructed_x = p_psi @ p_Y @ p_W @ p_phi
+        row_indices, col_indices = np.unravel_index(p_mask, reconstructed_x.shape)
+        imputed_values = reconstructed_x[row_indices, col_indices]
+        row_indices = row_indices.flatten()
+        col_indices = col_indices.flatten()
+        imputed_values = imputed_values.flatten()
+        df = pd.DataFrame({
+            "Row #": row_indices,
+            "Col #": col_indices,
+            "Imputed Value": imputed_values
+        })
+        csv_path = "imputed_values.csv"
+        df.to_csv(csv_path, index=False)
+        csv_path
 """
 #######################################################################################################################
 # Read csv data into DataFrame
