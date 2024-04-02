@@ -200,9 +200,17 @@ if __name__ == '__main__':
                         path = input("Enter path: ") if userinput == 'y' else "mdtd_config.json"
                         obj2 = MDTD_Driver(config_path=path)
                         tensor, recon_t, phi_y = obj2.mdtd(is_syn=False, X=obj2.X, adj1=obj2.adj_1, adj2=obj2.adj_2, mask=obj2.mask, count_nnz=obj2.count_nnz, num_iters_check=obj2.num_iters_check, lam=obj2.lam, K=obj2.K, epsilon=obj2.epsilon)
+
                 else:
                     obj2 = MDTD_Driver(config_path="mdtd_config.json")
                     tensor, recon_t, phi_y = obj2.mdtd(is_syn=True, X=obj2.X, adj1=obj2.adj_1, adj2=obj2.adj_2, mask=obj2.mask)
+
+                print(f"Would you like to return {len(obj2.mask)} missing (masked) values? ")
+                userinput = input("[y]es, [n]o ")
+                if userinput == "y":
+                    # Returns missing values, downloads new CSV and displays graph of imputed values
+                    MDTD_Driver.return_missing_values(obj2.mask, recon_t)
+                    print(f".csv of {len(obj2.mask)} imputed values downloaded to tensor_imputed_values.csv.")
 
                 print("Would you like to perform downstream tasks on your output?")
                 userinput = input("[y]es, [n]o: ")

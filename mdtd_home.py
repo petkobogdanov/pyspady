@@ -8,8 +8,7 @@ import mdtd_data_process
 import dictionary_generation
 from scipy.sparse import csr_matrix
 from scipy.sparse.linalg import spsolve
-from pyfiglet import Figlet
-
+import pandas as pd
 class MDTD_Home:
     def __init__(self, config_path):
         self.X, self.d1, self.d2, self.d3, self.adj_1, self.adj_2, self.mask, \
@@ -392,3 +391,30 @@ class MDTD_Home:
         epsilon = config['epsilon']
 
         return X, d1, d2, d3, adj_1, adj_2, mask, count_nnz, num_iters_check, lam, K, epsilon
+
+    @staticmethod
+    def return_missing_values(p_mask, p_recon_t):
+        """
+        Reconstructs tensor and downloads .csv with missing values from mask.
+        Args:
+            p_mask: Given mask as linear indices.
+            p_recon_t: Given reconstructed tensor.
+
+        Returns:
+            .csv file of missing values of the form {mode, row_index, col_index, value}.
+        """
+        row_indices, col_indices, depth_indices = np.unravel_index(p_mask, p_recon_t.shape)
+        imputed_values = p_recon_t[row_indices, col_indices, depth_indices]
+        depth_indices = depth_indices.flatten()
+        row_indices = row_indices.flatten()
+        col_indices = col_indices.flatten()
+        imputed_values = imputed_values.flatten()
+        df = pd.DataFrame({
+            "Row #": row_indices,
+            "Col #": col_indices,
+            "Depth #": depth_indices,
+            "Imputed Value": imputed_values
+        })
+        csv_path = "tensor_imputed_values.csv"
+        df.to_csv(csv_path, index=False)
+        csv_path

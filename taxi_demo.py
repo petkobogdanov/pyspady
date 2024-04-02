@@ -198,6 +198,10 @@ class Taxi_Demo:
                                                         MDTD_Driver.mask, MDTD_Driver.count_nnz,
                                                         MDTD_Driver.num_iters_check, MDTD_Driver.lam, MDTD_Driver.K,
                                                         MDTD_Driver.epsilon)
+
+            # Returns missing values, downloads new CSV and displays graph of imputed values
+            MDTD_Driver.return_missing_values(MDTD_Driver.mask, recon_X)
+            print(f".csv of {len(MDTD_Driver.mask)} imputed values downloaded to tensor_imputed_values.csv.")
             # Downstream tasks
             if self.perspective == "row":
                 MDTD_Outlier.mdtd_find_outlier(return_X, recon_X, 10, "x")
