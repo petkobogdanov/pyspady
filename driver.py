@@ -70,7 +70,7 @@ if __name__ == '__main__':
                 while (synorno := input("Would you like to use the synthetic data first as an example? [y]es, [n]o: ")) not in ['y', 'n']:
                     pass
                 if synorno == "y":
-                    [x, psi_d, phi_d, mask] = tgsd_home.TGSD_Home("tgsd_syn_config.json").config_run(config_path="tgsd_syn_config.json")
+                    [x, psi_d, phi_d, mask, k, lam1, lam2, lam3] = tgsd_home.TGSD_Home("tgsd_syn_config.json").config_run(config_path="tgsd_syn_config.json")
                     Y, W = tgsd_home.TGSD_Home("tgsd_syn_config.json").tgsd(x, psi_d, phi_d, mask)
 
                 else:
@@ -82,8 +82,8 @@ if __name__ == '__main__':
                         while(userinput := input("[y]es, [n]o: ")) not in ['y','n']:
                             pass
                         path = input("Enter path: ") if userinput == 'y' else "config.json"
-                        [x, psi_d, phi_d, mask] = tgsd_home.TGSD_Home(path).config_run(config_path=path)
-                        Y, W = tgsd_home.TGSD_Home(path).tgsd(x, psi_d, phi_d, mask)
+                        [x, psi_d, phi_d, mask, k, lam1, lam2, lam3] = tgsd_home.TGSD_Home(path).config_run(config_path=path)
+                        Y, W = tgsd_home.TGSD_Home(path).tgsd(x, psi_d, phi_d, mask, k=k, lambda_1=lam1, lambda_2=lam2, lambda_3=lam3)
 
                     else:
                         print("Would you like to use the autoconfig?")
@@ -156,8 +156,8 @@ if __name__ == '__main__':
                             with open(config_path, "w") as outfile:
                                 json.dump(config_json, outfile)
 
-                            [x, psi_d, phi_d, mask] = tgsd_home.TGSD_Home(config_path).config_run(config_path = config_path)
-                            Y, W = tgsd_home.TGSD_Home(config_path).tgsd(x, psi_d, phi_d, mask)
+                            [x, psi_d, phi_d, mask, k, lam1, lam2, lam3] = tgsd_home.TGSD_Home(config_path).config_run(config_path = config_path)
+                            Y, W = tgsd_home.TGSD_Home(config_path).tgsd(x, psi_d, phi_d, mask, k=k, lambda_1=lam1, lambda_2=lam2, lambda_3=lam3)
 
                 print(f"Would you like to return {mask.shape[1]} missing (masked) values? ")
                 userinput = input("[y]es, [n]o ")

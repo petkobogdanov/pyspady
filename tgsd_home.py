@@ -14,7 +14,7 @@ import matplotlib.pyplot as plt
 class TGSD_Home:
     def __init__(self, config_path):
         self.config_path = config_path
-        self.X, self.Psi_D, self.Phi_D, self.mask = self.config_run(config_path=f"{self.config_path}")
+        self.X, self.Psi_D, self.Phi_D, self.mask, self.k, self.lambda_1, self.lambda_2, self.lambda_3 = self.config_run(config_path=f"{self.config_path}")
         self.Y, self.W = None, None
 
     def tgsd(self, X, psi_d, phi_d, mask,
@@ -431,6 +431,22 @@ class TGSD_Home:
             case _:
                 raise Exception(f"PHI's dictionary, {config['phi']}, is invalid")
 
+        k: int = config["k"]
+        if not (isinstance(k, int) or (k < 0 or k > 100)):
+            raise Exception(f"{k} is invalid. Please enter a valid percent")
+
+        lam_1: float = config["lam_1"]
+        if not (isinstance(lam_1, float) or (lam_1 < 0 or lam_1 > 100)):
+            raise Exception(f"{lam_1} is invalid. Please enter a valid percent")
+
+        lam_2: float = config["lam_2"]
+        if not (isinstance(lam_2, float) or (lam_2 < 0 or lam_2 > 100)):
+            raise Exception(f"{lam_2} is invalid. Please enter a valid percent")
+
+        lam_3: float = config["lam_3"]
+        if not (isinstance(lam_3, float) or (lam_3 < 0 or lam_3 > 100)):
+            raise Exception(f"{lam_3} is invalid. Please enter a valid percent")
+
         # Validate the mask percent
         mask_percent: int = config["mask_percent"]
         if not (isinstance(mask_percent, int) or (mask_percent < 0 or mask_percent > 100)):
@@ -496,7 +512,7 @@ class TGSD_Home:
                 except Exception as e:
                     raise Exception(f"Error saving data: {e}")
 
-        return data, psi_d, phi_d, mask_data
+        return data, psi_d, phi_d, mask_data, k, lam_1, lam_2, lam_3
 
     @staticmethod
     def parse_data(data, data_type: str):
