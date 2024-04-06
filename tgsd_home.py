@@ -14,12 +14,12 @@ import matplotlib.pyplot as plt
 class TGSD_Home:
     def __init__(self, config_path):
         self.config_path = config_path
-        self.X, self.Psi_D, self.Phi_D, self.mask, self.k, self.lambda_1, self.lambda_2, self.lambda_3 = self.config_run(config_path=f"{self.config_path}")
+        self.X, self.Psi_D, self.Phi_D, self.mask, self.k, self.lambda_1, self.lambda_2, self.lambda_3, self.learning_rate = self.config_run(config_path=f"{self.config_path}")
         self.Y, self.W = None, None
 
-    def tgsd(self, X, psi_d, phi_d, mask,
-             iterations: int = 100, k: int = 7, lambda_1: int = 0.1, lambda_2: int = 0.1, lambda_3: int = 1,
-             rho_1: int = 0.01, rho_2: int = 0.01, type: str = "rand"):
+    def tgsd(self, X, psi_d, phi_d, mask, optimizer_method: str = "admm",
+             iterations: int = 500, k: int = 7, lambda_1: int = 0.1, lambda_2: int = 0.1, lambda_3: int = 1,
+             rho_1: int = 0.01, rho_2: int = 0.01, learning_rate: int = 0.000001, type: str = "rand"):
         """
         Decomposes a temporal graph signal as a product of two fixed dictionaries and two corresponding sparse encoding matrices
         Args:
@@ -27,6 +27,7 @@ class TGSD_Home:
             psi_d: Some graph dictionary, Ψ
             phi_d: Some time series dictionary,
             mask: List of linear indices to disguise
+            optimizer_method: Method of optimization, either ADMM or Gradient Descent
             iterations: Number of iterations to run on algorithm
             k: Rank of the encoding matrices
             lambda_1: Some sparsity regularization parameter
@@ -206,100 +207,154 @@ class TGSD_Home:
                 self.mask = np.argwhere(temp2 == 0)
 
         # plt.figure()
-
-        for i in range(1, 1 + iterations):
-            P = (psi_d.astype(np.longdouble) @ self.Y.astype(np.complex128) @ self.W.astype(
-                np.complex128) @ phi_d.astype(
-                np.complex128))
-            D = update_d(P, X, mask, lambda_3)
-            #     B=Sigma*W*Phi;
-            #     Y=(2*Psi'*D*B'+rho_1*Z+Gamma_1)*inv(2*(B*B')+rho_1*I_y+exp(-15));
-            B = sigma.astype(np.longdouble) @ self.W.astype(np.complex128) @ phi_d.astype(np.complex128)
-            if mask.any():
-                # Both are orth OR Psi is orth, Phi is not orth
-                if (is_orthonormal(phi_d) and is_orthonormal(psi_d)) or (
-                        is_orthonormal(psi_d) and not is_orthonormal(phi_d)):
-                    self.Y = (2 * psi_d.conj().T.astype(np.longdouble) @ D.astype(
-                        np.complex128) @ B.conj().T + rho_1 * Z.astype(
-                        np.complex128) + gamma_1.astype(np.complex128)) @ np.linalg.pinv(
-                        2 * (B @ B.conj().T) + rho_1 * I_Y + math.exp(-15)).astype(np.complex128)
-                # Phi is orth, Psi is not orth OR Psi is not orth, Phi is not orth
-                elif (is_orthonormal(phi_d) and not is_orthonormal(psi_d)) or (
-                        not is_orthonormal(psi_d) and not is_orthonormal(phi_d)):
-                    self.Y = hard_update_y(sigma, self.W, D, Z, psi_d, phi_d, lam_1, Q_1, gamma_1, rho_1)
-            else:
-                # Both are orth OR Psi is orth, Phi is not orth
-                if (is_orthonormal(phi_d) and is_orthonormal(psi_d)) or (
-                        is_orthonormal(psi_d) and not is_orthonormal(phi_d)):
-                    # Y=(2*PsiTX*B'+rho_1*Z+Gamma_1)*inv(2*(B*B')+rho_1*I_y+exp(-15));
-                    self.Y = (2 * PsiTX.astype(np.complex128) @ (B.astype(np.complex128)).conj().T + rho_1 * Z.astype(
-                        np.complex128) + gamma_1) \
-                             @ np.linalg.pinv(2 * (B @ B.conj().T) + rho_1 * I_Y + math.exp(-15)).astype(np.complex128)
-                elif (is_orthonormal(phi_d) and not is_orthonormal(psi_d)) or (
-                        not is_orthonormal(phi_d) and not is_orthonormal(psi_d)):
-                    self.Y = hard_update_y(sigma, self.W, D, psi_d, phi_d, lam_1, Q_1, gamma_1, rho_1)
-
-            test_instance = TestYConversion()
-            # ans_y = test_instance.test_y_complex_conversion(i, Y)
-            # Update Z:
-            # h = Y-gamma_1 / rho_1
-            # Z = sign(h).*max(abs(h)-lambda_1/rho_1, 0)
-            h = (self.Y - (gamma_1.astype(np.complex128) / rho_1)).astype(np.complex128)
-            Z = (np.sign(h) * np.maximum(np.abs(h) - (lambda_1 / rho_1), 0)).astype(np.complex128)
-            # A = psi*Y*sigma
-            A = psi_d.astype(np.longdouble) @ self.Y.astype(np.complex128) @ sigma.astype(np.longdouble)
-            if mask.any():
-                # Both are orthonormal OR Psi is orth, Phi is not
-                if (is_orthonormal(phi_d) and is_orthonormal(psi_d)) or (
-                        is_orthonormal(phi_d) and not is_orthonormal(psi_d)):
-                    # W = inv(2*(A')*A + I_W*rho_2) * (2*A'*D*phi'+rho_2*V+gamma_2)
-                    self.W = np.linalg.pinv(2 * A.conj().T @ A + I_W * rho_2).astype(np.complex128) @ (
-                            2 * A.conj().T @ D.astype(np.complex128) @ phi_d.conj().T + rho_2 * V + gamma_2)
-                # Psi is orth, Phi is not orth OR Psi is not orth, Phi is not orth
-                elif (is_orthonormal(psi_d) and not is_orthonormal(phi_d)) or (
-                        not is_orthonormal(psi_d) and not is_orthonormal(phi_d)):
-                    self.W = hard_update_w(sigma, V, D, self.Y, psi_d.astype(np.longdouble),
-                                           phi_d.astype(np.complex128), lam_4, Q_4,
-                                           gamma_2, rho_2)
-            else:
-                # Both are orth OR Phi is orth, Psi is not
-                if (is_orthonormal(phi_d) and is_orthonormal(psi_d)) or (
-                        is_orthonormal(phi_d) and not is_orthonormal(psi_d)):
-                    # W=inv(2*(A')*A + I_w*rho_2)*(2*A'*XPhiT+rho_2*V+ Gamma_2);
-                    self.W = np.linalg.pinv(2 * A.conj().T @ A + I_W * rho_2).astype(np.complex128) @ (
-                            2 * A.conj().T @ XPhiT.astype(np.complex128) + rho_2 * V + gamma_2)
-                # Psi is orth, Phi is not
-                elif is_orthonormal(psi_d) and not is_orthonormal(phi_d):
-                    sigma = sigma @ sigmaR
-                    self.W = hard_update_w(sigma, V, D, self.Y, psi_d.astype(np.longdouble),
-                                           phi_d.astype(np.complex128), lam_4, Q_4,
-                                           gamma_2, rho_2)
-                elif not is_orthonormal(psi_d) and not is_orthonormal(phi_d):
-                    self.W = hard_update_w(sigma, V, D, self.Y, psi_d.astype(np.longdouble),
-                                           phi_d.astype(np.complex128), lam_4, Q_4,
-                                           gamma_2, rho_2)
-
-            test_instance_w = TestWConversion()
-            # ans_w = test_instance_w.test_w_complex_conversion(i, W)
-            # Update V:
-            # h= W-Gamma_2/rho_2;
-            # V = sign(h).*max(abs(h)-lambda_2/rho_2,0);
-            h = self.W - (gamma_2.astype(np.complex128) / rho_2)
-            V = (np.sign(h) * np.maximum(np.abs(h) - (lambda_2 / rho_2), 0))
-
-            gamma_1, gamma_2 = gamma_1 + rho_1 * (Z - self.Y), gamma_2 + rho_2 * (V - self.W)
-            rho_1, rho_2 = min(rho_1 * 1.1, 1e5), min(rho_2 * 1.1, 1e5)
-
-            # Stop condition
-            if i % 25 == 0:
-                obj_new = get_object(mask, D, X, phi_d, psi_d, self.Y, sigma, self.W, lambda_1, lambda_2, lambda_3)
-                objs = [objs, obj_new]
-                residual = abs(obj_old - obj_new)
-                print(f"obj-{i}={obj_new}, residual-{i}={residual}")
-                if residual < 1e-6:
-                    break
+        if optimizer_method == "admm":
+            for i in range(1, 1 + iterations):
+                P = (psi_d.astype(np.longdouble) @ self.Y.astype(np.complex128) @ self.W.astype(
+                    np.complex128) @ phi_d.astype(
+                    np.complex128))
+                D = update_d(P, X, mask, lambda_3)
+                #     B=Sigma*W*Phi;
+                #     Y=(2*Psi'*D*B'+rho_1*Z+Gamma_1)*inv(2*(B*B')+rho_1*I_y+exp(-15));
+                B = sigma.astype(np.longdouble) @ self.W.astype(np.complex128) @ phi_d.astype(np.complex128)
+                if mask.any():
+                    # Both are orth OR Psi is orth, Phi is not orth
+                    if (is_orthonormal(phi_d) and is_orthonormal(psi_d)) or (
+                            is_orthonormal(psi_d) and not is_orthonormal(phi_d)):
+                        self.Y = (2 * psi_d.conj().T.astype(np.longdouble) @ D.astype(
+                            np.complex128) @ B.conj().T + rho_1 * Z.astype(
+                            np.complex128) + gamma_1.astype(np.complex128)) @ np.linalg.pinv(
+                            2 * (B @ B.conj().T) + rho_1 * I_Y + math.exp(-15)).astype(np.complex128)
+                    # Phi is orth, Psi is not orth OR Psi is not orth, Phi is not orth
+                    elif (is_orthonormal(phi_d) and not is_orthonormal(psi_d)) or (
+                            not is_orthonormal(psi_d) and not is_orthonormal(phi_d)):
+                        self.Y = hard_update_y(sigma, self.W, D, Z, psi_d, phi_d, lam_1, Q_1, gamma_1, rho_1)
                 else:
-                    obj_old = obj_new
+                    # Both are orth OR Psi is orth, Phi is not orth
+                    if (is_orthonormal(phi_d) and is_orthonormal(psi_d)) or (
+                            is_orthonormal(psi_d) and not is_orthonormal(phi_d)):
+                        # Y=(2*PsiTX*B'+rho_1*Z+Gamma_1)*inv(2*(B*B')+rho_1*I_y+exp(-15));
+                        self.Y = (2 * PsiTX.astype(np.complex128) @ (B.astype(np.complex128)).conj().T + rho_1 * Z.astype(
+                            np.complex128) + gamma_1) \
+                                 @ np.linalg.pinv(2 * (B @ B.conj().T) + rho_1 * I_Y + math.exp(-15)).astype(np.complex128)
+                    elif (is_orthonormal(phi_d) and not is_orthonormal(psi_d)) or (
+                            not is_orthonormal(phi_d) and not is_orthonormal(psi_d)):
+                        self.Y = hard_update_y(sigma, self.W, D, psi_d, phi_d, lam_1, Q_1, gamma_1, rho_1)
+
+                test_instance = TestYConversion()
+                # ans_y = test_instance.test_y_complex_conversion(i, Y)
+                # Update Z:
+                # h = Y-gamma_1 / rho_1
+                # Z = sign(h).*max(abs(h)-lambda_1/rho_1, 0)
+                h = (self.Y - (gamma_1.astype(np.complex128) / rho_1)).astype(np.complex128)
+                Z = (np.sign(h) * np.maximum(np.abs(h) - (lambda_1 / rho_1), 0)).astype(np.complex128)
+                # A = psi*Y*sigma
+                A = psi_d.astype(np.longdouble) @ self.Y.astype(np.complex128) @ sigma.astype(np.longdouble)
+                if mask.any():
+                    # Both are orthonormal OR Psi is orth, Phi is not
+                    if (is_orthonormal(phi_d) and is_orthonormal(psi_d)) or (
+                            is_orthonormal(phi_d) and not is_orthonormal(psi_d)):
+                        # W = inv(2*(A')*A + I_W*rho_2) * (2*A'*D*phi'+rho_2*V+gamma_2)
+                        self.W = np.linalg.pinv(2 * A.conj().T @ A + I_W * rho_2).astype(np.complex128) @ (
+                                2 * A.conj().T @ D.astype(np.complex128) @ phi_d.conj().T + rho_2 * V + gamma_2)
+                    # Psi is orth, Phi is not orth OR Psi is not orth, Phi is not orth
+                    elif (is_orthonormal(psi_d) and not is_orthonormal(phi_d)) or (
+                            not is_orthonormal(psi_d) and not is_orthonormal(phi_d)):
+                        self.W = hard_update_w(sigma, V, D, self.Y, psi_d.astype(np.longdouble),
+                                               phi_d.astype(np.complex128), lam_4, Q_4,
+                                               gamma_2, rho_2)
+                else:
+                    # Both are orth OR Phi is orth, Psi is not
+                    if (is_orthonormal(phi_d) and is_orthonormal(psi_d)) or (
+                            is_orthonormal(phi_d) and not is_orthonormal(psi_d)):
+                        # W=inv(2*(A')*A + I_w*rho_2)*(2*A'*XPhiT+rho_2*V+ Gamma_2);
+                        self.W = np.linalg.pinv(2 * A.conj().T @ A + I_W * rho_2).astype(np.complex128) @ (
+                                2 * A.conj().T @ XPhiT.astype(np.complex128) + rho_2 * V + gamma_2)
+                    # Psi is orth, Phi is not
+                    elif is_orthonormal(psi_d) and not is_orthonormal(phi_d):
+                        sigma = sigma @ sigmaR
+                        self.W = hard_update_w(sigma, V, D, self.Y, psi_d.astype(np.longdouble),
+                                               phi_d.astype(np.complex128), lam_4, Q_4,
+                                               gamma_2, rho_2)
+                    elif not is_orthonormal(psi_d) and not is_orthonormal(phi_d):
+                        self.W = hard_update_w(sigma, V, D, self.Y, psi_d.astype(np.longdouble),
+                                               phi_d.astype(np.complex128), lam_4, Q_4,
+                                               gamma_2, rho_2)
+
+                test_instance_w = TestWConversion()
+                # ans_w = test_instance_w.test_w_complex_conversion(i, W)
+                # Update V:
+                # h= W-Gamma_2/rho_2;
+                # V = sign(h).*max(abs(h)-lambda_2/rho_2,0);
+                h = self.W - (gamma_2.astype(np.complex128) / rho_2)
+                V = (np.sign(h) * np.maximum(np.abs(h) - (lambda_2 / rho_2), 0))
+
+                gamma_1, gamma_2 = gamma_1 + rho_1 * (Z - self.Y), gamma_2 + rho_2 * (V - self.W)
+                rho_1, rho_2 = min(rho_1 * 1.1, 1e5), min(rho_2 * 1.1, 1e5)
+
+                # Stop condition
+                if i % 25 == 0:
+                    obj_new = get_object(mask, D, X, phi_d, psi_d, self.Y, sigma, self.W, lambda_1, lambda_2, lambda_3)
+                    objs = [objs, obj_new]
+                    residual = abs(obj_old - obj_new)
+                    print(f"obj-{i}={obj_new}, residual-{i}={residual}")
+                    if residual < 1e-6:
+                        break
+                    else:
+                        obj_old = obj_new
+
+        elif optimizer_method == "gd":
+            m = psi_d.shape[1]
+            X = self.X
+            p, t = phi_d.shape
+            self.W = np.random.rand(self.k, p)
+            self.Y = np.random.rand(m, self.k)
+            self.learning_rate = learning_rate
+            mask = np.ones(X.shape, dtype=bool)
+            indices = np.unravel_index(self.mask.flatten(), X.shape)
+            mask[indices] = False
+            tol = 1e-6
+            coef_threshold = 1e-3
+            inner_iter = 25
+
+            for iter in range(1, iterations + 1):
+
+                for inner in range(1, inner_iter + 1):
+                    residual = X - psi_d @ self.Y @ self.W @ phi_d
+                    masked_residual = np.where(mask, residual, 0)
+
+                    grad_Y = lambda_1 * np.sign(self.Y) - 2 * psi_d.T @ masked_residual @ phi_d.conj().T @ self.W.T
+                    diff = self.learning_rate * grad_Y
+                    Y_next = self.Y - diff
+                    Y_next[np.abs(Y_next) < coef_threshold] = 0
+                    if np.linalg.norm(diff, ord="fro") < tol:
+                        print(f"Y Gradient Descent converged at {iter}")
+                        break
+                    self.Y = Y_next
+
+                for inner in range(1, inner_iter + 1):
+                    residual = X - psi_d @ self.Y @ self.W @ phi_d
+                    masked_residual = np.where(mask, residual, 0)
+
+                    grad_W = lambda_2 * np.sign(self.W) - 2 * (psi_d @ self.Y).T @ masked_residual @ phi_d.conj().T
+                    diff = self.learning_rate * grad_W
+                    W_next = self.W - diff
+                    W_next[np.abs(W_next) < coef_threshold] = 0
+                    if np.linalg.norm(diff, ord="fro") < tol:
+                        print(f"W Gradient Descent converged at {iter}")
+                        break
+                    self.W = W_next
+
+                obj_new = np.linalg.norm(np.where(mask, X - psi_d @ self.Y @ self.W @ phi_d, 0), ord=2)
+
+                if iter % 25 == 0:
+                    objs = [objs, obj_new]
+                    residual = abs(obj_old - obj_new)
+                    print(f"obj-{iter}={obj_new}, residual-{iter}={residual}")
+                    if residual < 4 * tol:
+                        break
+                    else:
+                        obj_old = obj_new
+
         return self.Y, self.W
 
     def config_run(self, dataframe: pd.DataFrame = None, config_path: str = "config.json"):
@@ -431,21 +486,25 @@ class TGSD_Home:
             case _:
                 raise Exception(f"PHI's dictionary, {config['phi']}, is invalid")
 
-        k: int = config["k"]
-        if not (isinstance(k, int) or (k < 0 or k > 100)):
-            raise Exception(f"{k} is invalid. Please enter a valid percent")
+        k_value: int = config["k"]
+        if not (isinstance(k_value, int) or (k_value < 0 or k_value > 100)):
+            raise Exception(f"{k_value} is invalid. Please enter a valid value")
 
         lam_1: float = config["lam_1"]
         if not (isinstance(lam_1, float) or (lam_1 < 0 or lam_1 > 100)):
-            raise Exception(f"{lam_1} is invalid. Please enter a valid percent")
+            raise Exception(f"{lam_1} is invalid. Please enter a valid value")
 
         lam_2: float = config["lam_2"]
         if not (isinstance(lam_2, float) or (lam_2 < 0 or lam_2 > 100)):
-            raise Exception(f"{lam_2} is invalid. Please enter a valid percent")
+            raise Exception(f"{lam_2} is invalid. Please enter a valid value")
 
         lam_3: float = config["lam_3"]
         if not (isinstance(lam_3, float) or (lam_3 < 0 or lam_3 > 100)):
-            raise Exception(f"{lam_3} is invalid. Please enter a valid percent")
+            raise Exception(f"{lam_3} is invalid. Please enter a valid value")
+
+        learning_rate: float = config["learning_rate"]
+        if not (isinstance(learning_rate, float)):
+            raise Exception(f"{learning_rate} is invalid. Please enter a valid learning rate")
 
         # Validate the mask percent
         mask_percent: int = config["mask_percent"]
@@ -461,6 +520,7 @@ class TGSD_Home:
                 mask_data: np.ndarray[any] = np.loadtxt(load_path, dtype=float)
             except FileNotFoundError:
                 raise Exception(f"Load path '{load_path}' does not exist")
+
         # If the load flag is not enabled check the mask mode
         else:
             # Validate and read the mask mode
@@ -511,8 +571,10 @@ class TGSD_Home:
                     np.savetxt(save_path, mask_data)
                 except Exception as e:
                     raise Exception(f"Error saving data: {e}")
+        if len(mask_data.shape) < 2:
+            mask_data = mask_data.reshape(1, mask_data.shape[0])
 
-        return data, psi_d, phi_d, mask_data, k, lam_1, lam_2, lam_3
+        return data, psi_d, phi_d, mask_data, k_value, lam_1, lam_2, lam_3, learning_rate
 
     @staticmethod
     def parse_data(data, data_type: str):

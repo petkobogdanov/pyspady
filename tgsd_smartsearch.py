@@ -7,7 +7,7 @@ import tgsd_home
 import time
 
 class CustomEncoder(BaseEstimator, TransformerMixin):
-    def __init__(self, config_path, demo, demo_X, demo_Phi, demo_Psi, demo_mask, coefficient_threshold, residual_threshold, K=7, iterations=100, lambda1=0.1,
+    def __init__(self, config_path, demo, demo_X, demo_Phi, demo_Psi, demo_mask, coefficient_threshold, residual_threshold, optimizer_method, K=7, iterations=100, lambda1=0.1,
                  lambda2=0.1, lambda3=1, rho1=0.01, rho2=0.01):
         self.config_path = config_path
         self.coefficient_threshold = float(coefficient_threshold)
@@ -23,6 +23,7 @@ class CustomEncoder(BaseEstimator, TransformerMixin):
         self.demo_Phi = demo_Phi
         self.demo_mask = demo_mask
         self.tgsd_driver = tgsd_home.TGSD_Home(config_path=self.config_path)
+        self.optimizer_method = optimizer_method
 
         if self.demo:
             self.X = self.demo_X
@@ -48,7 +49,7 @@ class CustomEncoder(BaseEstimator, TransformerMixin):
         self.tgsd_driver.tgsd(self.X, self.Psi_D, self.Phi_D, self.mask, self.iterations, self.K, self.lambda1, self.lambda2,
                                 self.lambda3,
                                 self.rho1,
-                                self.rho2, type="rand")
+                                self.rho2, type="rand", optimizer_method=self.optimizer_method)
         end_time = (time.time() - start_time) * 100 # n_iter = 100.
 
         # Hyperparameters to search using a uniform random distribution sampling
@@ -77,7 +78,7 @@ class CustomEncoder(BaseEstimator, TransformerMixin):
         Y, W = self.tgsd_driver.tgsd(X, self.Psi_D, self.Phi_D, self.mask, self.iterations, self.K, self.lambda1, self.lambda2,
                                 self.lambda3,
                                 self.rho1,
-                                self.rho2, type="rand")
+                                self.rho2, type="rand", optimizer_method=self.optimizer_method)
         self.Y_ = Y
         self.W_ = W
         return self
@@ -193,5 +194,5 @@ class CustomEncoder(BaseEstimator, TransformerMixin):
         """
         K = self.best_overall_params['K']
         lambda_1, lambda_2, lambda_3 = self.best_overall_params['lambda1'], self.best_overall_params['lambda2'], self.best_overall_params['lambda3']
-        self.Y, self.W = self.tgsd_driver.tgsd(self.X, self.Psi_D, self.Phi_D, self.mask, k=K, lambda_1=lambda_1, lambda_2=lambda_2, lambda_3=lambda_3)
+        self.Y, self.W = self.tgsd_driver.tgsd(self.X, self.Psi_D, self.Phi_D, self.mask, k=K, lambda_1=lambda_1, lambda_2=lambda_2, lambda_3=lambda_3, optimizer_method=self.optimizer_method)
         return self.Y, self.W

@@ -21,11 +21,12 @@ Taxi_Tensor_Clustering = taxi_tensor_clustering.Taxi_Tensor_Clustering
 
 
 class Taxi_Demo:
-    def __init__(self, month, method, perspective, auto):
+    def __init__(self, month, method, perspective, auto, optimizer_method):
         self.month = month
         self.method = method
         self.perspective = perspective
         self.auto = auto
+        self.optimizer_method = optimizer_method
 
     def load_lat_long(self):
         """
@@ -146,7 +147,7 @@ class Taxi_Demo:
             TGSD_Driver.mask = np.random.randint(0, 65536, size=(1, size_y), dtype=np.uint16)
 
             if not self.auto:
-                Y, W = TGSD_Driver.tgsd(TGSD_Driver.X, TGSD_Driver.Psi_D, TGSD_Driver.Phi_D, TGSD_Driver.mask)
+                Y, W = TGSD_Driver.tgsd(TGSD_Driver.X, TGSD_Driver.Psi_D, TGSD_Driver.Phi_D, TGSD_Driver.mask, optimizer_method=self.optimizer_method, learning_rate=0.00000001)
                 print(f"Imputing {TGSD_Driver.mask.shape[1]} masked values...")
                 TGSD_Driver.return_missing_values(TGSD_Driver.mask, TGSD_Driver.Psi_D, TGSD_Driver.Phi_D, Y, W)
                 # Returns missing values, downloads new CSV and displays graph of imputed values
