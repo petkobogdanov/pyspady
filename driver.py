@@ -39,6 +39,8 @@ if __name__ == '__main__':
 
                 while (tgsd_or_mdtd := input("Enter the method for [T]GSD or [M]DTD: ")) not in ['T', 'M']: pass
                 if tgsd_or_mdtd == "T":
+                    while (tgsd_model_input := input("Enter the optimizer for TGSD: [A]lternating Direction Method of Multipliers or [G]radient Descent: ")) not in ["A", "G"]: pass
+                    tgsd_model = "admm" if tgsd_model_input == "A" else "gd"
                     while (method := input("Enter a method for taxi [p]ickups or [d]ropoffs: ")) not in ['p', 'd']:
                         pass
                     method = 'pickup' if method == 'p' else 'dropoff'
@@ -53,7 +55,7 @@ if __name__ == '__main__':
                         pass
                     auto = True if auto == 'y' else False
 
-                    Taxi_Demo = taxi_demo.Taxi_Demo(month, method, perspective, auto)
+                    Taxi_Demo = taxi_demo.Taxi_Demo(month, method, perspective, auto, optimizer_method=tgsd_model)
                     Taxi_Demo.clean_and_run()
                 else:
                     print("Enter the perspective for MDTD.")
@@ -61,17 +63,20 @@ if __name__ == '__main__':
                         pass
                     perspective = 'point' if perspective == 'p' else ('col' if perspective == 'c' else 'row')
 
-                    Taxi_Demo = taxi_demo.Taxi_Demo(month, method="both", perspective=perspective, auto=False)
+                    Taxi_Demo = taxi_demo.Taxi_Demo(month, method="both", perspective=perspective, auto=False, optimizer_method=tgsd_model)
                     Taxi_Demo.clean_and_run()
         else:
             while (tgsd_or_mdtd := input("Enter the method for [T]GSD or [M]DTD: ")) not in ['T', 'M']: pass
 
             if tgsd_or_mdtd == "T":
+                while (tgsd_model_input := input("Enter the optimizer for TGSD: [A]lternating Direction Method of Multipliers or [G]radient Descent: ")) not in ["A", "G"]: pass
+                tgsd_model = "admm" if tgsd_model_input == "A" else "gd"
+
                 while (synorno := input("Would you like to use the synthetic data first as an example? [y]es, [n]o: ")) not in ['y', 'n']:
                     pass
                 if synorno == "y":
-                    [x, psi_d, phi_d, mask, k, lam1, lam2, lam3] = tgsd_home.TGSD_Home("tgsd_syn_config.json").config_run(config_path="tgsd_syn_config.json")
-                    Y, W = tgsd_home.TGSD_Home("tgsd_syn_config.json").tgsd(x, psi_d, phi_d, mask)
+                    [x, psi_d, phi_d, mask, k, lam1, lam2, lam3, learning_rate] = tgsd_home.TGSD_Home("tgsd_syn_config.json").config_run(config_path="tgsd_syn_config.json")
+                    Y, W = tgsd_home.TGSD_Home("tgsd_syn_config.json").tgsd(x, psi_d, phi_d, mask, optimizer_method=tgsd_model)
 
                 else:
                     print("Do you have a config file already set up?")
@@ -82,14 +87,14 @@ if __name__ == '__main__':
                         while(userinput := input("[y]es, [n]o: ")) not in ['y','n']:
                             pass
                         path = input("Enter path: ") if userinput == 'y' else "config.json"
-                        [x, psi_d, phi_d, mask, k, lam1, lam2, lam3] = tgsd_home.TGSD_Home(path).config_run(config_path=path)
-                        Y, W = tgsd_home.TGSD_Home(path).tgsd(x, psi_d, phi_d, mask, k=k, lambda_1=lam1, lambda_2=lam2, lambda_3=lam3)
+                        [x, psi_d, phi_d, mask, k, lam1, lam2, lam3, learning_rate] = tgsd_home.TGSD_Home(path).config_run(config_path=path)
+                        Y, W = tgsd_home.TGSD_Home(path).tgsd(x, psi_d, phi_d, mask, k=k, lambda_1=lam1, lambda_2=lam2, lambda_3=lam3, learning_rate=learning_rate, optimizer_method=tgsd_model)
 
                     else:
                         print("Would you like to use the autoconfig?")
                         while(userinput := input("[y]es, [n]o: ")) not in ['y','n']:
                             pass
-                        if(userinput == 'y'):
+                        if userinput == 'y':
                             residual_percent = input("Residual % [0.0, 0.99]: ")
                             coefficient_percent = input("Coefficient % [0.0, 0.99]: ")
                             tgsd_smartsearch = tgsd_smartsearch.CustomEncoder(config_path="config.json", demo=False,demo_X=None,demo_Phi=None,demo_Psi=None,demo_mask=None, coefficient_threshold=coefficient_percent, residual_threshold=residual_percent)
@@ -117,14 +122,54 @@ if __name__ == '__main__':
                                 pass
                             mask_mode = 'lin' if mask_mode == 'l' else ('rand' if mask_mode == 'r' else 'path')
 
-                            if(mask_mode == 'path'):
+                            if mask_mode == 'path':
                                 print("Please enter a mask path.")
                                 mask_path = input("Enter a path: ")
 
-                            print("Please enter the the mask percent.")
+                            print("Please enter the mask percent.")
                             while True: # So the program doesn't crash on non-numeric input
                                 try:
                                     if mask_percent := int(input("Enter a number [1-100]: ")) in range(1, 101):
+                                        break
+                                except ValueError:
+                                    pass
+
+                            print("Please enter the value for K.")
+                            while True: # So the program doesn't crash on non-numeric input
+                                try:
+                                    if k := int(input("Enter a number: ")) in range(1, 1001):
+                                        break
+                                except ValueError:
+                                    pass
+
+                            print("Please enter the value for lambda #1.")
+                            while True: # So the program doesn't crash on non-numeric input
+                                try:
+                                    if lambda_1_value := float(input("Enter a decimal or whole number.")) in range(0, 101):
+                                        break
+                                except ValueError:
+                                    pass
+
+                            print("Please enter the value for lambda #2.")
+                            while True: # So the program doesn't crash on non-numeric input
+                                try:
+                                    if lambda_2_value := float(input("Enter a decimal or whole number.")) in range(0, 101):
+                                        break
+                                except ValueError:
+                                    pass
+
+                            print("Please enter the value for lambda #3.")
+                            while True: # So the program doesn't crash on non-numeric input
+                                try:
+                                    if lambda_3_value := float(input("Enter a decimal or whole number.")) in range(0, 101):
+                                        break
+                                except ValueError:
+                                    pass
+
+                            print("Please enter the learning rate.")
+                            while True: # So the program doesn't crash on non-numeric input
+                                try:
+                                    if learning_rate_value := float(input("Enter a small number: ")) in range(0, 10):
                                         break
                                 except ValueError:
                                     pass
@@ -145,6 +190,11 @@ if __name__ == '__main__':
                                 'adj_path': adj_path,
                                 'psi': psi_d,
                                 'phi': phi_d,
+                                "k": k,
+                                "lam_1": lambda_1_value,
+                                "lam_2": lambda_2_value,
+                                "lam_3": lambda_3_value,
+                                "learning_rate": learning_rate_value,
                                 'mask_mode': mask_mode,
                                 'mask_percent': mask_percent,
                                 'adj_square_dimension': adj_square_dimension
@@ -156,8 +206,8 @@ if __name__ == '__main__':
                             with open(config_path, "w") as outfile:
                                 json.dump(config_json, outfile)
 
-                            [x, psi_d, phi_d, mask, k, lam1, lam2, lam3] = tgsd_home.TGSD_Home(config_path).config_run(config_path = config_path)
-                            Y, W = tgsd_home.TGSD_Home(config_path).tgsd(x, psi_d, phi_d, mask, k=k, lambda_1=lam1, lambda_2=lam2, lambda_3=lam3)
+                            [x, psi_d, phi_d, mask, k, lam1, lam2, lam3, learning_rate] = tgsd_home.TGSD_Home(config_path).config_run(config_path=config_path)
+                            Y, W = tgsd_home.TGSD_Home(config_path).tgsd(x, psi_d, phi_d, mask, k=k, lambda_1=lam1, lambda_2=lam2, lambda_3=lam3, learning_rate=learning_rate, optimizer_method=tgsd_model)
 
                 print(f"Would you like to return {mask.shape[1]} missing (masked) values? ")
                 userinput = input("[y]es, [n]o ")
