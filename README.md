@@ -28,7 +28,7 @@ PySpady enables users from all disciplines to leverage state-of-the-art and clas
 - [x] Missing value imputation
 - [x] Future value prediction
 - [x] Automatic hyperparameter optimization
-- [x] Optimizers for [temporal graph signal decomposition](https://www.cs.albany.edu/~petko/lab/papers/mzb2021kdd.pdf) and [multi-dictionary tensor decomposition](https://arxiv.org/abs/2309.09717): [Alternating Direction Method of Multipliers](https://stanford.edu/~boyd/admm.html) (ADMM) and [Gradient Descent](https://www.ibm.com/topics/gradient-descent)
+- [x] Optimizers for [TGSD](https://www.cs.albany.edu/~petko/lab/papers/mzb2021kdd.pdf) and [MDTD](https://arxiv.org/abs/2309.09717): [Alternating Direction Method of Multipliers](https://stanford.edu/~boyd/admm.html) (ADMM) and [Gradient Descent](https://www.ibm.com/topics/gradient-descent)
 - [x] [![JSON](https://img.shields.io/badge/JSON-8A2BE2?style=flat&logo=json&logoColor=white)](https://www.json.org/json-en.html) [![Pandas](https://img.shields.io/badge/pandas-150458?style=flat&logo=pandas&logoColor=white)](https://pandas.pydata.org/) user input configurations
 - [x] Dictionary screening
 - [x] Outlier detection with visualizations
