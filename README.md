@@ -28,7 +28,9 @@ PySpady enables users from all disciplines to leverage state-of-the-art and clas
 - [x] Missing value imputation
 - [x] Future value prediction
 - [x] Automatic hyperparameter optimization
+- [x] Optimizers for [temporal graph signal decomposition](https://www.cs.albany.edu/~petko/lab/papers/mzb2021kdd.pdf) and [multi-dictionary tensor decomposition](https://arxiv.org/abs/2309.09717): [Alternating Direction Method of Multipliers](https://stanford.edu/~boyd/admm.html) (ADMM) and [Gradient Descent](https://www.ibm.com/topics/gradient-descent)
 - [x] [![JSON](https://img.shields.io/badge/JSON-8A2BE2?style=flat&logo=json&logoColor=white)](https://www.json.org/json-en.html) [![Pandas](https://img.shields.io/badge/pandas-150458?style=flat&logo=pandas&logoColor=white)](https://pandas.pydata.org/) user input configurations
+- [x] Dictionary screening
 - [x] Outlier detection with visualizations
 - [x] Community detection with visualizations
 - [x] Command-line interface
@@ -62,6 +64,7 @@ Please make sure you already have the latest version of [![Python](https://img.s
 There are numerous datasets available for use in the PySpady library. Due to storage limitations, certain datasets cannot be stored on the Git repository and must be downloaded externally.
 
 - [New York City taxi pickup and dropoff data, circa 2017: 2D temporal graph signal](). Matrix reconstruction utilizes a GFT and Ramanujan periodic dictionary.
+- [Global airplane traffic, circa : 2D temporal graph signal](). Matrix reconstruction utilizes .
 - [New York City taxi pickup and dropoff data, circa 2017: Multi-way tensors](). Mode-3 tensor reconstruction utilizes a GFT and two Ramanujan periodic dictionaries.
 - [Multi-way tensors synthetic data](). Mode-3 tensor reconstruction utilizes a GFT, a DFT, and a Ramanujan periodic dictionary.
 
