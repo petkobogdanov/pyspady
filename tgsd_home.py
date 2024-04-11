@@ -8,17 +8,18 @@ from W_unittest import TestWConversion
 import json
 import random
 import dictionary_generation
+import matplotlib.pyplot as plt
 
 
 class TGSD_Home:
     def __init__(self, config_path):
         self.config_path = config_path
-        self.X, self.Psi_D, self.Phi_D, self.mask = self.config_run(config_path=f"{self.config_path}")
+        self.X, self.Psi_D, self.Phi_D, self.mask, self.k, self.lambda_1, self.lambda_2, self.lambda_3, self.learning_rate = self.config_run(config_path=f"{self.config_path}")
         self.Y, self.W = None, None
 
-    def tgsd(self, X, psi_d, phi_d, mask,
-             iterations: int = 100, k: int = 7, lambda_1: int = 0.1, lambda_2: int = 0.1, lambda_3: int = 1,
-             rho_1: int = 0.01, rho_2: int = 0.01, type: str = "rand"):
+    def tgsd(self, X, psi_d, phi_d, mask, optimizer_method: str = "admm",
+             iterations: int = 500, k: int = 7, lambda_1: int = 0.1, lambda_2: int = 0.1, lambda_3: int = 1,
+             rho_1: int = 0.01, rho_2: int = 0.01, learning_rate: int = 0.000001, type: str = "rand"):
         """
         Decomposes a temporal graph signal as a product of two fixed dictionaries and two corresponding sparse encoding matrices
         Args:
@@ -26,6 +27,7 @@ class TGSD_Home:
             psi_d: Some graph dictionary, Ψ
             phi_d: Some time series dictionary,
             mask: List of linear indices to disguise
+            optimizer_method: Method of optimization, either ADMM or Gradient Descent
             iterations: Number of iterations to run on algorithm
             k: Rank of the encoding matrices
             lambda_1: Some sparsity regularization parameter
@@ -205,100 +207,154 @@ class TGSD_Home:
                 self.mask = np.argwhere(temp2 == 0)
 
         # plt.figure()
-
-        for i in range(1, 1 + iterations):
-            P = (psi_d.astype(np.longdouble) @ self.Y.astype(np.complex128) @ self.W.astype(
-                np.complex128) @ phi_d.astype(
-                np.complex128))
-            D = update_d(P, X, mask, lambda_3)
-            #     B=Sigma*W*Phi;
-            #     Y=(2*Psi'*D*B'+rho_1*Z+Gamma_1)*inv(2*(B*B')+rho_1*I_y+exp(-15));
-            B = sigma.astype(np.longdouble) @ self.W.astype(np.complex128) @ phi_d.astype(np.complex128)
-            if mask.any():
-                # Both are orth OR Psi is orth, Phi is not orth
-                if (is_orthonormal(phi_d) and is_orthonormal(psi_d)) or (
-                        is_orthonormal(psi_d) and not is_orthonormal(phi_d)):
-                    self.Y = (2 * psi_d.conj().T.astype(np.longdouble) @ D.astype(
-                        np.complex128) @ B.conj().T + rho_1 * Z.astype(
-                        np.complex128) + gamma_1.astype(np.complex128)) @ np.linalg.pinv(
-                        2 * (B @ B.conj().T) + rho_1 * I_Y + math.exp(-15)).astype(np.complex128)
-                # Phi is orth, Psi is not orth OR Psi is not orth, Phi is not orth
-                elif (is_orthonormal(phi_d) and not is_orthonormal(psi_d)) or (
-                        not is_orthonormal(psi_d) and not is_orthonormal(phi_d)):
-                    self.Y = hard_update_y(sigma, self.W, D, Z, psi_d, phi_d, lam_1, Q_1, gamma_1, rho_1)
-            else:
-                # Both are orth OR Psi is orth, Phi is not orth
-                if (is_orthonormal(phi_d) and is_orthonormal(psi_d)) or (
-                        is_orthonormal(psi_d) and not is_orthonormal(phi_d)):
-                    # Y=(2*PsiTX*B'+rho_1*Z+Gamma_1)*inv(2*(B*B')+rho_1*I_y+exp(-15));
-                    self.Y = (2 * PsiTX.astype(np.complex128) @ (B.astype(np.complex128)).conj().T + rho_1 * Z.astype(
-                        np.complex128) + gamma_1) \
-                             @ np.linalg.pinv(2 * (B @ B.conj().T) + rho_1 * I_Y + math.exp(-15)).astype(np.complex128)
-                elif (is_orthonormal(phi_d) and not is_orthonormal(psi_d)) or (
-                        not is_orthonormal(phi_d) and not is_orthonormal(psi_d)):
-                    self.Y = hard_update_y(sigma, self.W, D, psi_d, phi_d, lam_1, Q_1, gamma_1, rho_1)
-
-            test_instance = TestYConversion()
-            # ans_y = test_instance.test_y_complex_conversion(i, Y)
-            # Update Z:
-            # h = Y-gamma_1 / rho_1
-            # Z = sign(h).*max(abs(h)-lambda_1/rho_1, 0)
-            h = (self.Y - (gamma_1.astype(np.complex128) / rho_1)).astype(np.complex128)
-            Z = (np.sign(h) * np.maximum(np.abs(h) - (lambda_1 / rho_1), 0)).astype(np.complex128)
-            # A = psi*Y*sigma
-            A = psi_d.astype(np.longdouble) @ self.Y.astype(np.complex128) @ sigma.astype(np.longdouble)
-            if mask.any():
-                # Both are orthonormal OR Psi is orth, Phi is not
-                if (is_orthonormal(phi_d) and is_orthonormal(psi_d)) or (
-                        is_orthonormal(phi_d) and not is_orthonormal(psi_d)):
-                    # W = inv(2*(A')*A + I_W*rho_2) * (2*A'*D*phi'+rho_2*V+gamma_2)
-                    self.W = np.linalg.pinv(2 * A.conj().T @ A + I_W * rho_2).astype(np.complex128) @ (
-                            2 * A.conj().T @ D.astype(np.complex128) @ phi_d.conj().T + rho_2 * V + gamma_2)
-                # Psi is orth, Phi is not orth OR Psi is not orth, Phi is not orth
-                elif (is_orthonormal(psi_d) and not is_orthonormal(phi_d)) or (
-                        not is_orthonormal(psi_d) and not is_orthonormal(phi_d)):
-                    self.W = hard_update_w(sigma, V, D, self.Y, psi_d.astype(np.longdouble),
-                                           phi_d.astype(np.complex128), lam_4, Q_4,
-                                           gamma_2, rho_2)
-            else:
-                # Both are orth OR Phi is orth, Psi is not
-                if (is_orthonormal(phi_d) and is_orthonormal(psi_d)) or (
-                        is_orthonormal(phi_d) and not is_orthonormal(psi_d)):
-                    # W=inv(2*(A')*A + I_w*rho_2)*(2*A'*XPhiT+rho_2*V+ Gamma_2);
-                    self.W = np.linalg.pinv(2 * A.conj().T @ A + I_W * rho_2).astype(np.complex128) @ (
-                            2 * A.conj().T @ XPhiT.astype(np.complex128) + rho_2 * V + gamma_2)
-                # Psi is orth, Phi is not
-                elif is_orthonormal(psi_d) and not is_orthonormal(phi_d):
-                    sigma = sigma @ sigmaR
-                    self.W = hard_update_w(sigma, V, D, self.Y, psi_d.astype(np.longdouble),
-                                           phi_d.astype(np.complex128), lam_4, Q_4,
-                                           gamma_2, rho_2)
-                elif not is_orthonormal(psi_d) and not is_orthonormal(phi_d):
-                    self.W = hard_update_w(sigma, V, D, self.Y, psi_d.astype(np.longdouble),
-                                           phi_d.astype(np.complex128), lam_4, Q_4,
-                                           gamma_2, rho_2)
-
-            test_instance_w = TestWConversion()
-            # ans_w = test_instance_w.test_w_complex_conversion(i, W)
-            # Update V:
-            # h= W-Gamma_2/rho_2;
-            # V = sign(h).*max(abs(h)-lambda_2/rho_2,0);
-            h = self.W - (gamma_2.astype(np.complex128) / rho_2)
-            V = (np.sign(h) * np.maximum(np.abs(h) - (lambda_2 / rho_2), 0))
-
-            gamma_1, gamma_2 = gamma_1 + rho_1 * (Z - self.Y), gamma_2 + rho_2 * (V - self.W)
-            rho_1, rho_2 = min(rho_1 * 1.1, 1e5), min(rho_2 * 1.1, 1e5)
-
-            # Stop condition
-            if i % 25 == 0:
-                obj_new = get_object(mask, D, X, phi_d, psi_d, self.Y, sigma, self.W, lambda_1, lambda_2, lambda_3)
-                objs = [objs, obj_new]
-                residual = abs(obj_old - obj_new)
-                print(f"obj-{i}={obj_new}, residual-{i}={residual}")
-                if residual < 1e-6:
-                    break
+        if optimizer_method == "admm":
+            for i in range(1, 1 + iterations):
+                P = (psi_d.astype(np.longdouble) @ self.Y.astype(np.complex128) @ self.W.astype(
+                    np.complex128) @ phi_d.astype(
+                    np.complex128))
+                D = update_d(P, X, mask, lambda_3)
+                #     B=Sigma*W*Phi;
+                #     Y=(2*Psi'*D*B'+rho_1*Z+Gamma_1)*inv(2*(B*B')+rho_1*I_y+exp(-15));
+                B = sigma.astype(np.longdouble) @ self.W.astype(np.complex128) @ phi_d.astype(np.complex128)
+                if mask.any():
+                    # Both are orth OR Psi is orth, Phi is not orth
+                    if (is_orthonormal(phi_d) and is_orthonormal(psi_d)) or (
+                            is_orthonormal(psi_d) and not is_orthonormal(phi_d)):
+                        self.Y = (2 * psi_d.conj().T.astype(np.longdouble) @ D.astype(
+                            np.complex128) @ B.conj().T + rho_1 * Z.astype(
+                            np.complex128) + gamma_1.astype(np.complex128)) @ np.linalg.pinv(
+                            2 * (B @ B.conj().T) + rho_1 * I_Y + math.exp(-15)).astype(np.complex128)
+                    # Phi is orth, Psi is not orth OR Psi is not orth, Phi is not orth
+                    elif (is_orthonormal(phi_d) and not is_orthonormal(psi_d)) or (
+                            not is_orthonormal(psi_d) and not is_orthonormal(phi_d)):
+                        self.Y = hard_update_y(sigma, self.W, D, Z, psi_d, phi_d, lam_1, Q_1, gamma_1, rho_1)
                 else:
-                    obj_old = obj_new
+                    # Both are orth OR Psi is orth, Phi is not orth
+                    if (is_orthonormal(phi_d) and is_orthonormal(psi_d)) or (
+                            is_orthonormal(psi_d) and not is_orthonormal(phi_d)):
+                        # Y=(2*PsiTX*B'+rho_1*Z+Gamma_1)*inv(2*(B*B')+rho_1*I_y+exp(-15));
+                        self.Y = (2 * PsiTX.astype(np.complex128) @ (B.astype(np.complex128)).conj().T + rho_1 * Z.astype(
+                            np.complex128) + gamma_1) \
+                                 @ np.linalg.pinv(2 * (B @ B.conj().T) + rho_1 * I_Y + math.exp(-15)).astype(np.complex128)
+                    elif (is_orthonormal(phi_d) and not is_orthonormal(psi_d)) or (
+                            not is_orthonormal(phi_d) and not is_orthonormal(psi_d)):
+                        self.Y = hard_update_y(sigma, self.W, D, psi_d, phi_d, lam_1, Q_1, gamma_1, rho_1)
+
+                test_instance = TestYConversion()
+                # ans_y = test_instance.test_y_complex_conversion(i, Y)
+                # Update Z:
+                # h = Y-gamma_1 / rho_1
+                # Z = sign(h).*max(abs(h)-lambda_1/rho_1, 0)
+                h = (self.Y - (gamma_1.astype(np.complex128) / rho_1)).astype(np.complex128)
+                Z = (np.sign(h) * np.maximum(np.abs(h) - (lambda_1 / rho_1), 0)).astype(np.complex128)
+                # A = psi*Y*sigma
+                A = psi_d.astype(np.longdouble) @ self.Y.astype(np.complex128) @ sigma.astype(np.longdouble)
+                if mask.any():
+                    # Both are orthonormal OR Psi is orth, Phi is not
+                    if (is_orthonormal(phi_d) and is_orthonormal(psi_d)) or (
+                            is_orthonormal(phi_d) and not is_orthonormal(psi_d)):
+                        # W = inv(2*(A')*A + I_W*rho_2) * (2*A'*D*phi'+rho_2*V+gamma_2)
+                        self.W = np.linalg.pinv(2 * A.conj().T @ A + I_W * rho_2).astype(np.complex128) @ (
+                                2 * A.conj().T @ D.astype(np.complex128) @ phi_d.conj().T + rho_2 * V + gamma_2)
+                    # Psi is orth, Phi is not orth OR Psi is not orth, Phi is not orth
+                    elif (is_orthonormal(psi_d) and not is_orthonormal(phi_d)) or (
+                            not is_orthonormal(psi_d) and not is_orthonormal(phi_d)):
+                        self.W = hard_update_w(sigma, V, D, self.Y, psi_d.astype(np.longdouble),
+                                               phi_d.astype(np.complex128), lam_4, Q_4,
+                                               gamma_2, rho_2)
+                else:
+                    # Both are orth OR Phi is orth, Psi is not
+                    if (is_orthonormal(phi_d) and is_orthonormal(psi_d)) or (
+                            is_orthonormal(phi_d) and not is_orthonormal(psi_d)):
+                        # W=inv(2*(A')*A + I_w*rho_2)*(2*A'*XPhiT+rho_2*V+ Gamma_2);
+                        self.W = np.linalg.pinv(2 * A.conj().T @ A + I_W * rho_2).astype(np.complex128) @ (
+                                2 * A.conj().T @ XPhiT.astype(np.complex128) + rho_2 * V + gamma_2)
+                    # Psi is orth, Phi is not
+                    elif is_orthonormal(psi_d) and not is_orthonormal(phi_d):
+                        sigma = sigma @ sigmaR
+                        self.W = hard_update_w(sigma, V, D, self.Y, psi_d.astype(np.longdouble),
+                                               phi_d.astype(np.complex128), lam_4, Q_4,
+                                               gamma_2, rho_2)
+                    elif not is_orthonormal(psi_d) and not is_orthonormal(phi_d):
+                        self.W = hard_update_w(sigma, V, D, self.Y, psi_d.astype(np.longdouble),
+                                               phi_d.astype(np.complex128), lam_4, Q_4,
+                                               gamma_2, rho_2)
+
+                test_instance_w = TestWConversion()
+                # ans_w = test_instance_w.test_w_complex_conversion(i, W)
+                # Update V:
+                # h= W-Gamma_2/rho_2;
+                # V = sign(h).*max(abs(h)-lambda_2/rho_2,0);
+                h = self.W - (gamma_2.astype(np.complex128) / rho_2)
+                V = (np.sign(h) * np.maximum(np.abs(h) - (lambda_2 / rho_2), 0))
+
+                gamma_1, gamma_2 = gamma_1 + rho_1 * (Z - self.Y), gamma_2 + rho_2 * (V - self.W)
+                rho_1, rho_2 = min(rho_1 * 1.1, 1e5), min(rho_2 * 1.1, 1e5)
+
+                # Stop condition
+                if i % 25 == 0:
+                    obj_new = get_object(mask, D, X, phi_d, psi_d, self.Y, sigma, self.W, lambda_1, lambda_2, lambda_3)
+                    objs = [objs, obj_new]
+                    residual = abs(obj_old - obj_new)
+                    print(f"obj-{i}={obj_new}, residual-{i}={residual}")
+                    if residual < 1e-6:
+                        break
+                    else:
+                        obj_old = obj_new
+
+        elif optimizer_method == "gd":
+            m = psi_d.shape[1]
+            X = self.X
+            p, t = phi_d.shape
+            self.W = np.random.rand(self.k, p)
+            self.Y = np.random.rand(m, self.k)
+            self.learning_rate = learning_rate
+            mask = np.ones(X.shape, dtype=bool)
+            indices = np.unravel_index(self.mask.flatten(), X.shape)
+            mask[indices] = False
+            tol = 1e-6
+            coef_threshold = 1e-3
+            inner_iter = 25
+
+            for iter in range(1, iterations + 1):
+
+                for inner in range(1, inner_iter + 1):
+                    residual = X - psi_d @ self.Y @ self.W @ phi_d
+                    masked_residual = np.where(mask, residual, 0)
+
+                    grad_Y = lambda_1 * np.sign(self.Y) - 2 * psi_d.T @ masked_residual @ phi_d.conj().T @ self.W.T
+                    diff = self.learning_rate * grad_Y
+                    Y_next = self.Y - diff
+                    Y_next[np.abs(Y_next) < coef_threshold] = 0
+                    if np.linalg.norm(diff, ord="fro") < tol:
+                        print(f"Y Gradient Descent converged at {iter}")
+                        break
+                    self.Y = Y_next
+
+                for inner in range(1, inner_iter + 1):
+                    residual = X - psi_d @ self.Y @ self.W @ phi_d
+                    masked_residual = np.where(mask, residual, 0)
+
+                    grad_W = lambda_2 * np.sign(self.W) - 2 * (psi_d @ self.Y).T @ masked_residual @ phi_d.conj().T
+                    diff = self.learning_rate * grad_W
+                    W_next = self.W - diff
+                    W_next[np.abs(W_next) < coef_threshold] = 0
+                    if np.linalg.norm(diff, ord="fro") < tol:
+                        print(f"W Gradient Descent converged at {iter}")
+                        break
+                    self.W = W_next
+
+                obj_new = np.linalg.norm(np.where(mask, X - psi_d @ self.Y @ self.W @ phi_d, 0), ord=2)
+
+                if iter % 25 == 0:
+                    objs = [objs, obj_new]
+                    residual = abs(obj_old - obj_new)
+                    print(f"obj-{iter}={obj_new}, residual-{iter}={residual}")
+                    if residual < 4 * tol:
+                        break
+                    else:
+                        obj_old = obj_new
+
         return self.Y, self.W
 
     def config_run(self, dataframe: pd.DataFrame = None, config_path: str = "config.json"):
@@ -326,18 +382,6 @@ class TGSD_Home:
             raise Exception("Config must contain the 'mask_mode' key")
         if not ("mask_percent" in config):
             raise Exception("Config must contain the 'mask_percent' key")
-        if not ("first_x_dimension" in config):
-            raise Exception("Config must contain the 'first_x_dimension' key")
-        if not ("second_x_dimension" in config):
-            raise Exception("Config must contain the 'second_x_dimension' key")
-
-        # Validate the first and second dimensions of x
-        first_x_dimension: int = config["first_x_dimension"]
-        second_x_dimension: int = config["second_x_dimension"]
-        if not (isinstance(first_x_dimension, int)):
-            raise Exception(f"Key 'first_x_dimension', {first_x_dimension}, is invalid. Please enter a valid int")
-        if not (isinstance(second_x_dimension, int)):
-            raise Exception(f"Key 'second_x_dimension', {second_x_dimension}, is invalid. Please enter a valid int")
 
         psi: str = str(config["psi"]).lower()
         phi: str = str(config["phi"]).lower()
@@ -380,7 +424,6 @@ class TGSD_Home:
             case "ram":
                 # psi_d = gen_rama(400, 10)
                 psi_d = dictionary_generation.GenerateDictionary.gen_rama(data.shape[1], 24)
-                pass
             case "gft":
                 # Attempt to load adj_list
                 if dataframe is None:
@@ -407,31 +450,61 @@ class TGSD_Home:
                                                shape=(adj_square_dimension, adj_square_dimension))
                 gft = dictionary_generation.GenerateDictionary.gen_gft_new(sparse_adj_mtx, False)
                 psi_d = gft[0]  # eigenvectors
-                pass
             case "dft":
-                pass
-                # psi_d = gen_dft(200)
+                psi_d = dictionary_generation.GenerateDictionary.gen_dft(data.shape[0])
+            case "spline":
+                psi_d = dictionary_generation.GenerateDictionary.gen_spline(data.shape[0])
             case _:
                 raise Exception(f"PSI's dictionary, {config['psi']}, is invalid")
 
         match str(config["phi"]).lower():
             case "ram":
-                # phi_d = gen_rama(400, 10)
-                pass
+                phi_d = dictionary_generation.GenerateDictionary.gen_rama(data.shape[1], 24)
             case "gft":
+                try:
+                    adj_data: np.ndarray[any] = TGSD_Home.parse_data(dataframe, data_type='adj')
+                except Exception as e:
+                    raise Exception(f"Error loading adj_list data from dataframe")
                 # Validate the adjacency matrix's dimension
                 if not ("adj_square_dimension" in config):
-                    raise Exception("PHI's dictionary, GFT, requires 'adj_square_dimension' key")
+                    raise Exception("PSI's dictionary, GFT, requires 'adj_square_dimension' key")
                 adj_square_dimension: int = config["adj_square_dimension"]
                 if not (isinstance(adj_square_dimension, int)):
                     raise Exception(
                         f"Key, 'adj_square_dimension', {adj_square_dimension} is invalid. Please enter a valid int")
-                pass
+
+                rows, cols = adj_data[:, 0], adj_data[:, 1]
+                sparse_adj_mtx = sp.csc_matrix((np.ones_like(rows), (rows, cols)),
+                                               shape=(adj_square_dimension, adj_square_dimension))
+                gft = dictionary_generation.GenerateDictionary.gen_gft_new(sparse_adj_mtx, False)
+                phi_d = gft[0]  # eigenvectors
             case "dft":
                 phi_d = dictionary_generation.GenerateDictionary.gen_dft(data.shape[1])
                 pass
+            case "spline":
+                phi_d = dictionary_generation.GenerateDictionary.gen_spline(data.shape[1]).T
             case _:
                 raise Exception(f"PHI's dictionary, {config['phi']}, is invalid")
+
+        k_value: int = config["k"]
+        if not (isinstance(k_value, int) or (k_value < 0 or k_value > 100)):
+            raise Exception(f"{k_value} is invalid. Please enter a valid value")
+
+        lam_1: float = config["lam_1"]
+        if not (isinstance(lam_1, float) or (lam_1 < 0 or lam_1 > 100)):
+            raise Exception(f"{lam_1} is invalid. Please enter a valid value")
+
+        lam_2: float = config["lam_2"]
+        if not (isinstance(lam_2, float) or (lam_2 < 0 or lam_2 > 100)):
+            raise Exception(f"{lam_2} is invalid. Please enter a valid value")
+
+        lam_3: float = config["lam_3"]
+        if not (isinstance(lam_3, float) or (lam_3 < 0 or lam_3 > 100)):
+            raise Exception(f"{lam_3} is invalid. Please enter a valid value")
+
+        learning_rate: float = config["learning_rate"]
+        if not (isinstance(learning_rate, float)):
+            raise Exception(f"{learning_rate} is invalid. Please enter a valid learning rate")
 
         # Validate the mask percent
         mask_percent: int = config["mask_percent"]
@@ -447,6 +520,7 @@ class TGSD_Home:
                 mask_data: np.ndarray[any] = np.loadtxt(load_path, dtype=float)
             except FileNotFoundError:
                 raise Exception(f"Load path '{load_path}' does not exist")
+
         # If the load flag is not enabled check the mask mode
         else:
             # Validate and read the mask mode
@@ -497,8 +571,10 @@ class TGSD_Home:
                     np.savetxt(save_path, mask_data)
                 except Exception as e:
                     raise Exception(f"Error saving data: {e}")
+        if len(mask_data.shape) < 2:
+            mask_data = mask_data.reshape(1, mask_data.shape[0])
 
-        return data, psi_d, phi_d, mask_data
+        return data, psi_d, phi_d, mask_data, k_value, lam_1, lam_2, lam_3, learning_rate
 
     def dataframe_run(self, dataframe: pd.DataFrame, auto: bool = True):
         try:
@@ -663,6 +739,35 @@ class TGSD_Home:
             if data_type == 'rho_2':
                 return data["rho_2"].astype(float).iloc[0]
 
+    @staticmethod
+    def return_missing_values(p_mask, p_psi, p_phi, p_Y, p_W):
+        """
+        Reconstructs matrix and downloads .csv with missing values from mask.
+        Args:
+            p_mask: Given mask as linear indices.
+            p_psi: Graph-prior dictionary.
+            p_phi: Time-prior dictionary.
+            p_Y: Encoding matrix obtained from TGSD.
+            p_W: Encoding matrix obtained from TGSD.
+
+        Returns:
+            .csv file of missing values of the form {row_index, col_index, value}.
+        """
+        reconstructed_x = p_psi @ p_Y @ p_W @ p_phi
+        row_indices, col_indices = np.unravel_index(p_mask, reconstructed_x.shape)
+        imputed_values = reconstructed_x[row_indices, col_indices]
+        row_indices = row_indices.flatten()
+        col_indices = col_indices.flatten()
+        imputed_values = imputed_values.flatten()
+        df = pd.DataFrame({
+            "Row #": row_indices,
+            "Col #": col_indices,
+            "Imputed Value": imputed_values
+        })
+        csv_path = "imputed_values.csv"
+        df.to_csv(csv_path, index=False)
+        csv_path
+"""
 #######################################################################################################################
 # Read csv data into DataFrame
 df_X = pd.read_csv('tgsd_demo_data/matlab_demo_X.csv', header=None, dtype=str)
@@ -745,3 +850,5 @@ stuff2 = tgsd.dataframe_run(dataframe=combined_df)
 tgsd.tgsd(stuff2[0], stuff2[1], stuff2[2], stuff2[3])
 
 #######################################################################################################################
+######################################################################################################################
+"""

@@ -5,7 +5,7 @@ import scipy
 import scipy.sparse as sp
 from scipy.fftpack import fft
 import pandas as pd
-
+from scipy.interpolate import BSpline
 
 class GenerateDictionary:
     @staticmethod
@@ -142,3 +142,53 @@ class GenerateDictionary:
             else:
                 A = np.concatenate((A, CNA), axis=1)
         return A.T
+
+    @staticmethod
+    def gen_spline(p_signal_length, p_num_space=20, p_degree=4):
+        def bspline_basis(i, p_degree, p_knot_vector, p_x):
+            def bspline_basis_recurrence(i, p_degree, p_knot_vector, p_x):
+                y = np.zeros(p_x.shape)
+
+                if p_degree > 1:
+                    b = bspline_basis_recurrence(i, p_degree - 1, p_knot_vector, p_x)
+                    d_n = p_x - p_knot_vector[0, i]
+                    d_d = p_knot_vector[0, i + p_degree - 1] - p_knot_vector[0, i]
+                    if d_d != 0:
+                        y += b * (d_n / d_d)
+
+                    b = bspline_basis_recurrence(i + 1, p_degree - 1, p_knot_vector, p_x)
+                    d_n = p_knot_vector[0, i + p_degree] - p_x
+                    d_d = p_knot_vector[0, i + p_degree] - p_knot_vector[0, i + 1]
+
+                    if d_d != 0:
+                        y += b * (d_n / d_d)
+
+                elif p_knot_vector[0, i+1] < p_knot_vector[0, -1]:
+                    y[(p_knot_vector[0, i] <= p_x) & (p_x < p_knot_vector[0, i + 1])] = 1
+                else:
+                    y[p_knot_vector[0, i] <= p_x] = 1
+
+                return y
+
+            return bspline_basis_recurrence(i, p_degree, p_knot_vector, p_x)
+
+        def bspline_basismatrix(p_degree, p_knot_vector, p_x):
+            num_basis_functions = p_knot_vector.shape[1] - p_degree + 1
+            B = np.zeros((p_x.shape[1], num_basis_functions))
+
+            for i in range(num_basis_functions-1):
+                B[:, i] = bspline_basis(i, p_degree, p_knot_vector, p_x)
+            return B
+
+        if isinstance(p_signal_length, int):
+            s1, s2 = 1, p_signal_length
+        else:
+            s1, s2 = min(p_signal_length), max(p_signal_length)
+
+        step = (s2-s1)/p_num_space
+        knot_vector = np.arange(s1, s2 + step, step)
+        knot_vector = np.concatenate(([s1] * (p_degree-1), knot_vector, [s2] * (p_degree-1)))
+        knot_vector = knot_vector.reshape(1, len(knot_vector))
+        x = np.arange(1, p_signal_length+1).reshape(1, p_signal_length)
+        return bspline_basismatrix(p_degree, knot_vector, x)
+

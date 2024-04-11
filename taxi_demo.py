@@ -21,11 +21,12 @@ Taxi_Tensor_Clustering = taxi_tensor_clustering.Taxi_Tensor_Clustering
 
 
 class Taxi_Demo:
-    def __init__(self, month, method, perspective, auto):
+    def __init__(self, month, method, perspective, auto, optimizer_method):
         self.month = month
         self.method = method
         self.perspective = perspective
         self.auto = auto
+        self.optimizer_method = optimizer_method
 
     def load_lat_long(self):
         """
@@ -142,10 +143,15 @@ class Taxi_Demo:
             TGSD_Driver.X = d
             TGSD_Driver.Psi_D = GenDict.gen_gft_new(adj_matrix, False)[0]
             TGSD_Driver.Phi_D = GenDict.gen_rama(t=d.shape[1], max_period=24)
-            TGSD_Driver.mask = np.random.randint(0, 65536, size=(1, 3500), dtype=np.uint16)
+            size_y = int(.1*adj_matrix.shape[0]*adj_matrix.shape[1])
+            TGSD_Driver.mask = np.random.randint(0, 65536, size=(1, size_y), dtype=np.uint16)
 
             if not self.auto:
-                Y, W = TGSD_Driver.tgsd(TGSD_Driver.X, TGSD_Driver.Psi_D, TGSD_Driver.Phi_D, TGSD_Driver.mask)
+                Y, W = TGSD_Driver.tgsd(TGSD_Driver.X, TGSD_Driver.Psi_D, TGSD_Driver.Phi_D, TGSD_Driver.mask, optimizer_method=self.optimizer_method, learning_rate=0.00000001)
+                print(f"Imputing {TGSD_Driver.mask.shape[1]} masked values...")
+                TGSD_Driver.return_missing_values(TGSD_Driver.mask, TGSD_Driver.Psi_D, TGSD_Driver.Phi_D, Y, W)
+                # Returns missing values, downloads new CSV and displays graph of imputed values
+                print(f".csv of {TGSD_Driver.mask.shape[1]} imputed values downloaded to imputed_values.csv.")
             else:
                 # Run smart search using thresholds of 0.3 and 0.3. Change accordingly.
                 # If demo is changed to False, default values of X/Psi/Phi/mask will be loaded in.
@@ -193,6 +199,10 @@ class Taxi_Demo:
                                                         MDTD_Driver.mask, MDTD_Driver.count_nnz,
                                                         MDTD_Driver.num_iters_check, MDTD_Driver.lam, MDTD_Driver.K,
                                                         MDTD_Driver.epsilon)
+
+            # Returns missing values, downloads new CSV and displays graph of imputed values
+            MDTD_Driver.return_missing_values(MDTD_Driver.mask, recon_X)
+            print(f".csv of {len(MDTD_Driver.mask)} imputed values downloaded to tensor_imputed_values.csv.")
             # Downstream tasks
             if self.perspective == "row":
                 MDTD_Outlier.mdtd_find_outlier(return_X, recon_X, 10, "x")

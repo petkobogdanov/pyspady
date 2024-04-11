@@ -1,19 +1,29 @@
 import numpy as np
+import scipy.io
 import tensorly as tl
 import scipy.sparse as sp
 import time
 import json
 import mdtd_data_process
 import dictionary_generation
-
-
+from scipy.sparse import csr_matrix
+from scipy.sparse.linalg import spsolve
+import pandas as pd
 class MDTD_Home:
     def __init__(self, config_path):
-        self.X, self.adj_1, self.adj_2, self.mask, self.count_nnz, self.num_iters_check, self.lam, self.K, self.epsilon = self.mdtd_load_config(
-            f"{config_path}")
+        self.X, self.d1, self.d2, self.d3, self.adj_1, self.adj_2, self.mask, \
+                                            self.count_nnz, self.num_iters_check, self.lam, self.K, self.epsilon = self.mdtd_load_config(f"{config_path}")
         self.PhiY, self.recon_t = None, None
+        self.K = 20
+        self.avg_inversion_time = 0
+        self.avg_tensor_recon_time = 0
+        self.avg_mttkrp_time = 0
 
-    def mdtd(self, is_syn: bool, X, adj1, adj2, mask, count_nnz=10, num_iters_check=0, lam=0.000001, K=10,
+        self.inversion_count = 0
+        self.tensor_count = 0
+        self.mttkrp_count = 0
+
+    def mdtd(self, is_syn: bool, X, adj1, adj2, mask, count_nnz=10, num_iters_check=10, lam=0.000001, K=10,
              epsilon=1e-4):
         """
         Performs tensor decomposition across multi-dictionaries
@@ -53,7 +63,7 @@ class MDTD_Home:
             Returns:
                 List of synthetic lambda values and list of synthetic rho values
             """
-            syn_lambda = [0.000001 for _ in range(p_dim)]
+            syn_lambda = [0.0001 for _ in range(p_dim)]
             syn_rho = [val * 5 for val in syn_lambda]
             return syn_lambda, syn_rho
 
@@ -68,19 +78,47 @@ class MDTD_Home:
             Returns:
                 The Matricized Tensor Times Khatri-Rao Product of p_D and p_PhiY along the n-th mode
             """
-            return tl.unfold(p_D, mode=p_n).astype('float32') @ tl.tenalg.khatri_rao(
+            self.mttkrp_count += 1
+            start_mttkrp_time = time.time()
+            #return tl.unfold(p_D, mode=p_n).astype('float32') @ tl.tenalg.khatri_rao(
+            #    [p_PhiY[i].astype('float32') for i in range(len(p_PhiY)) if i != p_n])
+            x = tl.unfold(p_D, mode=p_n).astype('float32') @ tl.tenalg.khatri_rao(
                 [p_PhiY[i].astype('float32') for i in range(len(p_PhiY)) if i != p_n])
+            elapsed = time.time() - start_mttkrp_time
+            self.avg_mttkrp_time += elapsed
+            return x
 
         if is_syn:
             # Generate synthetic data numpy arrays
-            MDTD_Demo_Phi, MDTD_Demo_PhiYg, MDTD_Demo_P = dictionary_generation.GenerateDictionary.save_to_numpy_arrays()
+            MDTD_Demo_Phi, MDTD_Demo_PhiYg, MDTD_Demo_P = mdtd_data_process.MDTD_Data_Process.syn_data_to_numpy()
             self.X = gen_syn_X(MDTD_Demo_PhiYg)  # numpy array of x * y * z
+            import h5py
+            with h5py.File('crime_tensor.mat', 'r') as file:
+                self.X = file['data_tensor'][()].T
+
+            X = self.X
             num_modes = self.X.ndim
             lam, rho = gen_syn_lambda_rho(num_modes)  # list of size n
-            phi_d = MDTD_Demo_Phi  # list of numpy arrays in form (1, n) where each atom corresponds to a dictionary.
-            phi_type = ['not_ortho_dic', 'no_dic', 'no_dic']
+            phi_d = MDTD_Demo_Phi
+
+            phi_d[0, 0] = dictionary_generation.GenerateDictionary.gen_gft_new(scipy.io.loadmat("chicago_adj.mat")["chicago_adj"], False)[0]
+            phi_d[0, 1] = dictionary_generation.GenerateDictionary.gen_spline(24)
+            phi_d[0, 2] = dictionary_generation.GenerateDictionary.gen_spline(6186)
+
+            # list of numpy arrays in form (1, n) where each atom corresponds to a dictionary.
+            phi_type = ['ortho_dic', 'not_ortho_dic', 'not_ortho_dic']
             # first coordinate of each dictionary = shape of X
             P = MDTD_Demo_P  # Y values of shape of X
+
+            P[0, 0][0] = 77
+            P[0, 1][0] = 24
+            P[0, 2][0] = 24
+
+            num_to_mask = int(np.prod(X.shape) * (1 / 100.0))
+            all_indices = np.arange(np.prod(X.shape))
+            mask = np.random.choice(all_indices, num_to_mask, replace=False)
+            self.mask = mask
+
         else:
             X = self.X
             num_modes = X.ndim
@@ -90,16 +128,13 @@ class MDTD_Home:
             phi_d = np.empty((1, num_modes), dtype=object)
 
             for mode in range(num_modes):
-                if mode == 0 or mode == 1:
-                    nested_dictionary = dictionary_generation.GenerateDictionary.gen_gft_new(adj1, False)[
-                        0] if mode == 0 else \
-                        dictionary_generation.GenerateDictionary.gen_gft_new(adj2, False)[0]
-                else:
-                    nested_dictionary = dictionary_generation.GenerateDictionary.gen_rama(t=X.shape[2], max_period=24)
+                if mode == 0: nested_dictionary = self.d1
+                elif mode == 1: nested_dictionary = self.d2
+                else: nested_dictionary = self.d3
                 phi_d[0, mode] = nested_dictionary
 
             # phi_type = [random.choice(['not_ortho_dic', 'ortho_dic', 'no_dic']) for _ in range(num_modes)]
-            phi_type = ['no_dic', 'ortho_dic', 'no_dic']
+            phi_type = ['ortho_dic', 'ortho_dic', 'no_dic']
             P = np.empty((1, num_modes), dtype=object)
 
             for i in range(phi_d.shape[1]):
@@ -117,6 +152,8 @@ class MDTD_Home:
                 P[0, _] = np.array([num], dtype=np.uint16)
 
         # cast to Double for mask indexing i.e. double_X = double(X)
+        K = self.K
+
         print(f"Phi types in this run: {phi_type}")
         D = X
         normalize_scaling = np.ones(K)
@@ -145,13 +182,16 @@ class MDTD_Home:
         # 1:num_modes, @(x) isequal(sort(x), 1:num_modes)
         dimorder = np.arange(1, num_modes + 1)
         gamma = [None] * num_modes
-
         YPhiInitInner = np.zeros((K, K, num_modes))
         Y_init, PhiYInit = [None] * num_modes, [None] * num_modes
 
         for n in range(len(dimorder)):
             Y_init[n] = np.random.rand(P[0, n][0], K)
-            PhiYInit[n] = (phi_d[0, n] @ Y_init[n]) if phi_type[n] in ["not_ortho_dic", "ortho_dic"] else Y_init[n]
+            PhiYInit[n] = (phi_d[0, n] @ Y_init[n]) if phi_type[n] in ["not_ortho_dic", "ortho_dic"] else Y_init[n] # Note potential error here for Ramanujan dictionary (180, 744)
+            # If Ramanujan dictionary is not "not_dic", PhiYInit entry is 180xK instead of 744xK => phi_d[0, n] entry is 180x744, Y_init entry is 744xK.
+            # Resulting in PhiY of 180xK instead of 744xK and incorrect reconstructed tensor.
+            # Is a potential solution taking the transpose of the Ramanujan instead?
+            # For now, just chose no_dic instead
             YPhiInitInner[:, :, n] = PhiYInit[n].T @ PhiYInit[n] if phi_type[n] == "not_ortho_dic" else Y_init[n].T @ \
                                                                                                         Y_init[n]
             gamma[n] = 0
@@ -192,8 +232,16 @@ class MDTD_Home:
                     # phi_d_rao_other_factors = (phi_d[0, n].T @ mttkrp(D, PhiY, n) + rho[n] * Z[n] - gamma[n])
                     product_vector = np.prod(YPhi_Inner[:, :, list(range(n)) + list(range(n + 1, num_modes))], axis=2)
                     # denominator = product_vector + rho[n] * np.eye(K)
-                    Y[n] = np.linalg.solve((product_vector + rho[n] * np.eye(K)).T,
-                                           (phi_d[0, n].T @ mttkrp(D, self.PhiY, n) + rho[n] * Z[n] - gamma[n]).T).T
+                    other_factors = ((phi_d[0, n].T @ mttkrp(D, self.PhiY, n)) + rho[n] * csr_matrix(Z[n]) - gamma[n]).T
+
+                    self.inversion_count += 1
+                    start_inversion = time.time()
+                    #Y[n] = np.linalg.solve((product_vector + rho[n] * np.eye(K)).T,
+                    #                       (phi_d[0, n].T @ mttkrp(D, self.PhiY, n) + rho[n] * Z[n] - gamma[n]).T).T
+                    Y[n] = spsolve((csr_matrix(product_vector) + rho[n] * scipy.sparse.eye(K, format='csr').T),
+                                   other_factors).T
+                    end_inversion = time.time() - start_inversion
+                    self.avg_inversion_time += end_inversion
                     normalize_scaling = np.sqrt(np.sum(Y[n] ** 2, axis=0)).reshape(-1, 1).T if i == 1 else np.maximum(
                         np.max(np.abs(Y[n]), axis=0), 1).reshape(-1, 1).T
                     Y[n] /= normalize_scaling
@@ -201,12 +249,19 @@ class MDTD_Home:
                     YPhi_Inner[:, :, n] = Y[n].T @ Y[n]
 
                 elif phi_type[n] == "no_dic":
+                    product_vector = np.prod(YPhi_Inner[:, :, list(range(n)) + list(range(n + 1, num_modes))], axis=2)
                     Y[n] = mttkrp(D, self.PhiY, n)
+                    self.inversion_count += 1
                     # inversion_product_vector = np.prod(YPhi_Inner[:, :, list(range(n)) + list(range(n + 1, num_modes))], axis=2)
-                    Y[n] = np.linalg.solve(
-                        (np.prod(YPhi_Inner[:, :, list(range(n)) + list(range(n + 1, num_modes))], axis=2)).T, Y[n].T).T
+                    start_inversion = time.time()
+                    Y[n] = spsolve(csr_matrix(product_vector).T, csr_matrix(Y[n]).T).T
+                    Y[n] = Y[n].toarray()
+                    #Y[n] = np.linalg.solve(
+                    #    (np.prod(YPhi_Inner[:, :, list(range(n)) + list(range(n + 1, num_modes))], axis=2)).T, Y[n].T).T
+                    end_inversion = time.time() - start_inversion
                     normalize_scaling = np.sqrt(np.sum(Y[n] ** 2, axis=0)).reshape(-1, 1).T if i == 1 else np.maximum(
                         np.max(np.abs(Y[n]), axis=0), 1).reshape(-1, 1).T
+                    self.avg_inversion_time += end_inversion
                     Y[n] /= normalize_scaling
                     self.PhiY[n] = Y[n]
                     YPhi_Inner[:, :, n] = Y[n].T @ Y[n]
@@ -226,18 +281,18 @@ class MDTD_Home:
             if (isinstance(mask, list) and len(mask) > 0) or (isinstance(mask, np.ndarray) and mask.any()):
                 if isinstance(mask, list): mask = np.array(mask)
                 # set D to reconstructed values and cast to double for mask indexing
+                self.tensor_count += 1
+                start_reconstruction = time.time()
                 self.recon_t = tl.kruskal_to_tensor(
                     (normalize_scaling.reshape((normalize_scaling.shape[1],)), [matrix for matrix in self.PhiY]))
-                D = self.recon_t
+                D = X.copy()  # Make a copy of the input tensor
 
-                missing_mask, observed_mask = np.zeros(double_X.shape), np.ones(double_X.shape)
+                # Imputation:
+                mask_i, mask_j, mask_t = np.unravel_index(mask, D.shape)
+                D[mask_i, mask_j, mask_t] = tl.tensor(self.recon_t)[mask_i, mask_j, mask_t]
 
-                # for idx in mask:
-                #    nd_idx = nd_index(idx, double_X.shape)  # Convert index to correct tuple
-                #    missing_mask[nd_idx] = 1
-                nd_indices = np.unravel_index(mask, double_X.shape)
-                missing_mask[nd_indices] = 1
-                D = ((observed_mask - missing_mask) * (self.recon_t + lam[0] * double_X)) / 1 + lam[0]
+                end_reconstruction = time.time() - start_reconstruction
+                self.avg_tensor_recon_time += end_reconstruction
             else:
                 D = X
 
@@ -251,7 +306,7 @@ class MDTD_Home:
 
                 if len(mask) == 0 or mask_complex == 1:
                     self.recon_t = tl.kruskal_to_tensor(
-                        (np.squeeze(normalize_scaling), [matrix for matrix in self.PhiY]))
+                    (np.squeeze(normalize_scaling), [matrix for matrix in self.PhiY]))
 
                 recon_error = tl.sqrt(
                     (normX ** 2) + (tl.norm(self.recon_t, order=2) ** 2) - 2 * tl.tenalg.inner(X, self.recon_t))
@@ -266,8 +321,11 @@ class MDTD_Home:
                     f"Iteration={i} Fit={fit} f-delta={fit_change} Reconstruction Error={recon_error} Sparsity Constraint={sparsity_constraint} Total={objs[i // num_iters_check, :]}")
 
                 if fit_change < epsilon:
-                    print(f"{avg_time}, {i}")
-                    print(f"Algo has met fit change tolerance, avg time: {avg_time / i}")
+                    print(f"Total time: {avg_time}, Iteration: {i}")
+                    print(f"Algo has met fit change tolerance, avg time per 1 iteration: {avg_time / i}")
+                    print(f"Avg tensor time: {self.avg_tensor_recon_time/self.tensor_count}")
+                    print(f"Avg inversion time: {self.avg_inversion_time/self.inversion_count}")
+                    print(f"Avg mttkrp time: {self.avg_mttkrp_time/self.mttkrp_count}")
                     break
 
         # [[S ⊡ Φ1Y1, Φ2Y2, Φ3Y3]
@@ -302,10 +360,19 @@ class MDTD_Home:
             X = mdtd_data_process.MDTD_Data_Process.mdtd_format_csv_to_numpy(config['X'])
         if X.any():
             # Construct adjacency matrices
-            if config['adj-1']:
+            if config['dictionary-1'] == "GFT" and config['adj-1']:
                 adj_1 = build_adj_matrix(config["adj-1"], X.shape[0])
-            if config['adj-2']:
+                d1 = dictionary_generation.GenerateDictionary.gen_gft_new(adj_1, False)[0]
+            if config['dictionary-2'] == "GFT" and config['adj-2']:
                 adj_2 = build_adj_matrix(config["adj-2"], X.shape[1])
+                d2 = dictionary_generation.GenerateDictionary.gen_gft_new(adj_2, False)[0]
+            elif config["dictionary-2"] == "rama":
+                d2 = dictionary_generation.GenerateDictionary.gen_rama(t=X.shape[1], max_period=24)
+            elif config["dictionary-2"] == "spline":
+                d2 = dictionary_generation.GenerateDictionary.gen_spline(p_signal_length=X.shape[1])
+            if config["dictionary-3"] == "rama":
+                d3 = dictionary_generation.GenerateDictionary.gen_rama(t=X.shape[2], max_period=24)
+            else: d3 = dictionary_generation.GenerateDictionary.gen_spline(p_signal_length=X.shape[2])
 
         # Construct a random, linear indexed mask based on X shape
         mask_percentage = config["mask_percentage_random"]
@@ -323,13 +390,31 @@ class MDTD_Home:
         K = config['K']
         epsilon = config['epsilon']
 
-        return X, adj_1, adj_2, mask, count_nnz, num_iters_check, lam, K, epsilon
+        return X, d1, d2, d3, adj_1, adj_2, mask, count_nnz, num_iters_check, lam, K, epsilon
 
+    @staticmethod
+    def return_missing_values(p_mask, p_recon_t):
+        """
+        Reconstructs tensor and downloads .csv with missing values from mask.
+        Args:
+            p_mask: Given mask as linear indices.
+            p_recon_t: Given reconstructed tensor.
 
-if __name__ == '__main__':
-    # mdtm_input_x, mdtm_input_adj, mdtm_input_mask, mdtm_input_count_nnz, mdtm_input_num_iters_check, mdtm_input_lam, mdtm_input_K, mdtm_input_epsilon = mdtm_load_config()
-    mdtm_X, recon_X, phi_y = mdtd(is_syn=True, X=None, adj1=None, adj2=None, mask=[], count_nnz=0, num_iters_check=10,
-                                  lam=0.000001, K=10,
-                                  epsilon=1e-4)
-    mdtd_clustering(phi_y, 5)
-    # mdtm_find_outlier(mdtm_X, recon_X, 10)
+        Returns:
+            .csv file of missing values of the form {mode, row_index, col_index, value}.
+        """
+        row_indices, col_indices, depth_indices = np.unravel_index(p_mask, p_recon_t.shape)
+        imputed_values = p_recon_t[row_indices, col_indices, depth_indices]
+        depth_indices = depth_indices.flatten()
+        row_indices = row_indices.flatten()
+        col_indices = col_indices.flatten()
+        imputed_values = imputed_values.flatten()
+        df = pd.DataFrame({
+            "Row #": row_indices,
+            "Col #": col_indices,
+            "Depth #": depth_indices,
+            "Imputed Value": imputed_values
+        })
+        csv_path = "tensor_imputed_values.csv"
+        df.to_csv(csv_path, index=False)
+        csv_path

@@ -4,13 +4,14 @@ import numpy as np
 from scipy.stats import randint as sp_randint
 from scipy.stats import uniform
 import tgsd_home
+import time
 
 class CustomEncoder(BaseEstimator, TransformerMixin):
-    def __init__(self, config_path, demo, demo_X, demo_Phi, demo_Psi, demo_mask, coefficient_threshold, residual_threshold, K=7, iterations=100, lambda1=0.1,
+    def __init__(self, config_path, demo, demo_X, demo_Phi, demo_Psi, demo_mask, coefficient_threshold, residual_threshold, optimizer_method, K=7, iterations=100, lambda1=0.1,
                  lambda2=0.1, lambda3=1, rho1=0.01, rho2=0.01):
         self.config_path = config_path
-        self.coefficient_threshold = coefficient_threshold
-        self.residual_threshold = residual_threshold
+        self.coefficient_threshold = float(coefficient_threshold)
+        self.residual_threshold = float(residual_threshold)
         self.best_coefficient_params = None
         self.best_residual_params = None
         self.best_overall_params = None
@@ -22,6 +23,7 @@ class CustomEncoder(BaseEstimator, TransformerMixin):
         self.demo_Phi = demo_Phi
         self.demo_mask = demo_mask
         self.tgsd_driver = tgsd_home.TGSD_Home(config_path=self.config_path)
+        self.optimizer_method = optimizer_method
 
         if self.demo:
             self.X = self.demo_X
@@ -42,6 +44,14 @@ class CustomEncoder(BaseEstimator, TransformerMixin):
         self.lambda3 = lambda3
         self.rho1 = rho1
         self.rho2 = rho2
+
+        start_time = time.time()
+        self.tgsd_driver.tgsd(self.X, self.Psi_D, self.Phi_D, self.mask, self.iterations, self.K, self.lambda1, self.lambda2,
+                                self.lambda3,
+                                self.rho1,
+                                self.rho2, iterations=100, type="rand", optimizer_method=self.optimizer_method)
+        end_time = (time.time() - start_time) * 100 # n_iter = 100.
+
         # Hyperparameters to search using a uniform random distribution sampling
         self.param_distributions_mask = {
             'K': sp_randint(1, self.X.shape[0]+1),
@@ -54,6 +64,8 @@ class CustomEncoder(BaseEstimator, TransformerMixin):
             'lambda1': uniform(0.001, 5),
             'lambda2': uniform(0.001, 5),
         }
+
+        print(f"Preparing to run smart search. Estimated time to complete: {end_time // 60} minutes, {end_time % 60} seconds.")
     def fit(self, X, y=None):
         """
         Returns Y and W given certain permutation of hyperparameters
@@ -66,12 +78,12 @@ class CustomEncoder(BaseEstimator, TransformerMixin):
         Y, W = self.tgsd_driver.tgsd(X, self.Psi_D, self.Phi_D, self.mask, self.iterations, self.K, self.lambda1, self.lambda2,
                                 self.lambda3,
                                 self.rho1,
-                                self.rho2, type="rand")
+                                self.rho2, type="rand", optimizer_method=self.optimizer_method)
         self.Y_ = Y
         self.W_ = W
         return self
 
-    def count_nonzero_with_epsilon(self, a, epsilon=1e-01):
+    def count_nonzero_with_epsilon(self, a, epsilon=1e-02):
         """
         Count number of non-zero, or close to non-zero, entries in some numpy array
         Args:
@@ -142,9 +154,9 @@ class CustomEncoder(BaseEstimator, TransformerMixin):
         the residual and coefficient scores. If either the residual or combination threshold is met, a new
         best threshold is stored. If both are met, the iteration breaks and the parameters are stored as optimal.
         """
-        param_sampler = ParameterSampler(self.param_distributions_mask, n_iter=200, random_state=42) if len(
+        param_sampler = ParameterSampler(self.param_distributions_mask, n_iter=100, random_state=42) if len(
             self.mask) > 0 else \
-            ParameterSampler(self.param_distributions_no_mask, n_iter=200, random_state=42)
+            ParameterSampler(self.param_distributions_no_mask, n_iter=100, random_state=42)
         found = False
         for params in param_sampler:
             self.set_params(**params)
@@ -165,6 +177,7 @@ class CustomEncoder(BaseEstimator, TransformerMixin):
             if residual_percentage < self.residual_threshold and coefficient_percentage < self.coefficient_threshold:
                 print(
                     f"Early stopping at residual score {residual_percentage} and coefficient score {coefficient_percentage} with parameters {params}")
+                print("Running best parameters on your input data...")
                 self.best_overall_params = params
                 found = True
                 break
@@ -179,10 +192,7 @@ class CustomEncoder(BaseEstimator, TransformerMixin):
         Returns:
             Encoding matrices Y and W.
         """
-        #def tgsd(self, X, psi_d, phi_d, mask,
-        #     iterations: int = 100, k: int = 7, lambda_1: int = 0.1, lambda_2: int = 0.1, lambda_3: int = 1,
-        #     rho_1: int = 0.01, rho_2: int = 0.01, type: str = "rand"):
         K = self.best_overall_params['K']
         lambda_1, lambda_2, lambda_3 = self.best_overall_params['lambda1'], self.best_overall_params['lambda2'], self.best_overall_params['lambda3']
-        self.Y, self.W = self.tgsd_driver.tgsd(self.X, self.Psi_D, self.Phi_D, self.mask, k=K, lambda_1=lambda_1, lambda_2=lambda_2, lambda_3=lambda_3)
+        self.Y, self.W = self.tgsd_driver.tgsd(self.X, self.Psi_D, self.Phi_D, self.mask, iterations=100, k=K, lambda_1=lambda_1, lambda_2=lambda_2, lambda_3=lambda_3, optimizer_method=self.optimizer_method)
         return self.Y, self.W

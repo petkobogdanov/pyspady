@@ -1,3 +1,5 @@
+from matplotlib.patches import Circle
+from sklearn.cluster import KMeans
 import pandas as pd
 import numpy as np
 import geopandas as gpd
@@ -6,8 +8,29 @@ from shapely.geometry import Point
 from shapely import wkt
 import matplotlib.pyplot as plt
 from matplotlib.gridspec import GridSpec
-from sklearn.cluster import KMeans
+from pyproj import Transformer
+from geopy.geocoders import Photon
+from geopy.extra.rate_limiter import RateLimiter
 
+# Initialize Nominatim API
+geolocator = Photon(user_agent="measurements")
+geocode = RateLimiter(geolocator.geocode, min_delay_seconds=0.5)
+transformer = Transformer.from_crs("EPSG:4326", "EPSG:3857", always_xy=True)
+
+# Bounds of NYC in wgs84 format
+nyc_bounds_wgs84 = {
+    'west': -74.255735,
+    'south': 40.496044,
+    'east': -73.700272,
+    'north': 40.915256,
+}
+# Transform coordinates of NYC bounds
+nyc_bounds_mercator = {
+    'west': transformer.transform(nyc_bounds_wgs84['west'], nyc_bounds_wgs84['south'])[0],
+    'south': transformer.transform(nyc_bounds_wgs84['west'], nyc_bounds_wgs84['south'])[1],
+    'east': transformer.transform(nyc_bounds_wgs84['east'], nyc_bounds_wgs84['north'])[0],
+    'north': transformer.transform(nyc_bounds_wgs84['east'], nyc_bounds_wgs84['north'])[1],
+}
 
 class Taxi_Tensor_Clustering:
     @staticmethod
@@ -230,7 +253,8 @@ class Taxi_Tensor_Clustering:
         # Convert CRS
         correct_pickup_centroid = correct_pickup_centroid.to_crs(epsg=3857)
         correct_dropoff_centroid = correct_dropoff_centroid.to_crs(epsg=3857)
-
+        correct_pickup_radius = correct_pickup_radius.to_crs(epsg=3857)
+        correct_dropoff_radius = correct_dropoff_radius.to_crs(epsg=3857)
 
         # Plot locations on map of NYC
         for idx, row in correct_pickup_centroid.iterrows():
@@ -238,15 +262,19 @@ class Taxi_Tensor_Clustering:
             radius_point_row = correct_pickup_radius.loc[idx]
             radius = row.geometry.distance(radius_point_row.geometry)
             color = pickup_zone_color_map[zone_name]
-            ax.plot(row.geometry.x, row.geometry.y, 'o', color=color, markersize=8, label=f'pickup_{zone_name}')
-            circle = Circle((row.geometry.x, row.geometry.y), radius, edgecolor=color, facecolor='none', label=f'radius_{zone_name}')
+            ax.plot(row.geometry.x, row.geometry.y, 'o', color=color, markersize=6, label=f'pickup_{zone_name}')
+            circle = Circle((row.geometry.x, row.geometry.y), radius, edgecolor=color, facecolor='none', linewidth=2, label=f'radius_{zone_name}')
             ax.add_patch(circle)
             # use proper_outlier_pickup_radius to plot radii
 
         for idx, row in correct_dropoff_centroid.iterrows():
             zone_name = row.Name if pd.notnull(row['Name']) else row.Zone
+            radius_point_row = correct_dropoff_radius.loc[idx]
+            radius = row.geometry.distance(radius_point_row.geometry)
             color = dropoff_zone_color_map[zone_name]
-            ax.plot(row.geometry.x, row.geometry.y, 'o', color=color, markersize=8, label=f'dropoff_{zone_name}')
+            ax.plot(row.geometry.x, row.geometry.y, 'o', color=color, markersize=6, label=f'dropoff_{zone_name}')
+            circle = Circle((row.geometry.x, row.geometry.y), radius, edgecolor=color, facecolor='none', linewidth=2, label=f'radius_{zone_name}')
+            ax.add_patch(circle)
             # use proper_outlier_dropoff_radius to plot radii
 
         # Base map, bounds, and other settings
@@ -273,5 +301,5 @@ class Taxi_Tensor_Clustering:
 
         # Add the pickup legend manually to the current Axes, dropoff_legend is automatically added
         ax.add_artist(pickup_legend)
-
+        ax.set_title("April NYC Taxi Pickups and Dropoffs by Volume")
         plt.show()
