@@ -500,6 +500,122 @@ class TGSD_Home:
 
         return data, psi_d, phi_d, mask_data
 
+    def dataframe_run(self, dataframe: pd.DataFrame, auto: bool = True):
+        try:
+            data: np.ndarray[any] = TGSD_Home.parse_data(dataframe, data_type='X')
+        except Exception as e:
+            raise Exception(f"Error loading data from dataframe")
+        try:
+            psi_d_type = TGSD_Home.parse_data(dataframe, data_type='psi_d_type')
+        except Exception as e:
+            raise Exception(f"Error loading type of psi dictionary from dataframe")
+        try:
+            phi_d_type = TGSD_Home.parse_data(dataframe, data_type='phi_d_type')
+        except Exception as e:
+            raise Exception(f"Error loading type of phi dictionary from dataframe")
+
+        match str(psi_d_type).lower():
+            case "ram":
+                # psi_d = gen_rama(400, 10)
+                psi_d = dictionary_generation.GenerateDictionary.gen_rama(data.shape[1], 24)
+                pass
+            case "gft":
+                # Attempt to load adj_list
+                try:
+                    adj_data: np.ndarray[any] = TGSD_Home.parse_data(dataframe, data_type='adj')
+                except Exception as e:
+                    raise Exception(f"Error loading adj_list data from dataframe")
+                # Validate the adjacency matrix's dimension
+                try:
+                    adj_square_dimension: int = TGSD_Home.parse_data(dataframe, data_type='adj_square_dimension')
+                except Exception as e:
+                    raise Exception("PSI's dictionary, GFT, requires 'adj_square_dimension' in dataframe")
+                if not (isinstance(adj_square_dimension, int)):
+                    print(type(adj_square_dimension))
+                    raise Exception(
+                        f"Key, 'adj_square_dimension', {adj_square_dimension} is invalid. Please enter a valid int")
+                rows, cols = adj_data[:, 0], adj_data[:, 1]
+                sparse_adj_mtx = sp.csc_matrix((np.ones_like(rows), (rows, cols)),
+                                               shape=(adj_square_dimension, adj_square_dimension))
+                gft = dictionary_generation.GenerateDictionary.gen_gft_new(sparse_adj_mtx, False)
+                psi_d = gft[0]  # eigenvectors
+                pass
+            case "dft":
+                pass
+                # psi_d = gen_dft(200)
+            case _:
+                raise Exception(f"PSI's dictionary, {psi_d_type}, is invalid")
+
+        match str(phi_d_type).lower():
+            case "ram":
+                # phi_d = gen_rama(400, 10)
+                pass
+            case "gft":
+                # Validate the adjacency matrix's dimension
+                try:
+                    adj_square_dimension: int = TGSD_Home.parse_data(dataframe, data_type='adj_square_dimension')
+                except Exception as e:
+                    raise Exception("PSI's dictionary, GFT, requires 'adj_square_dimension' in dataframe")
+                if not (isinstance(adj_square_dimension, int)):
+                    raise Exception(
+                        f"Key, 'adj_square_dimension', {adj_square_dimension} is invalid. Please enter a valid int")
+                pass
+            case "dft":
+                phi_d = dictionary_generation.GenerateDictionary.gen_dft(data.shape[1])
+                pass
+            case _:
+                raise Exception(f"PHI's dictionary, {phi_d_type}, is invalid")
+
+        try:
+            mask_data: np.ndarray[any] = TGSD_Home.parse_data(dataframe, data_type='mask')
+        except Exception as e:
+            raise Exception(f"Error loading mask data from dataframe")
+
+        if auto:
+            return data, psi_d, phi_d, mask_data
+        else:
+            try:
+                iterations: int = TGSD_Home.parse_data(dataframe, data_type='iterations')
+                k: int = TGSD_Home.parse_data(dataframe, data_type='k')
+                lambda_1: float = TGSD_Home.parse_data(dataframe, data_type='lambda_1')
+                lambda_2: float = TGSD_Home.parse_data(dataframe, data_type='lambda_2')
+                lambda_3: float = TGSD_Home.parse_data(dataframe, data_type='lambda_3')
+                rho_1: float = TGSD_Home.parse_data(dataframe, data_type='rho_1')
+                rho_2: float = TGSD_Home.parse_data(dataframe, data_type='rho_2')
+            except Exception as e:
+                raise Exception(f"Error loading hyperparameters from dataframe")
+            return data, psi_d, phi_d, mask_data, iterations, k, lambda_1, lambda_2, lambda_3, rho_1, rho_2
+
+    def build_dataframe(self, data: pd.DataFrame, adj_mtx: pd.DataFrame, mask: pd.DataFrame, hyperparams: pd.DataFrame = None):
+        data.columns = ['X'] * len(data.columns)
+        adj_mtx.columns = ['adj'] * len(adj_mtx.columns)
+        mask.columns = ['mask'] * len(mask.columns)
+        combined_df = pd.concat([data, adj_mtx, mask], axis=1)
+
+        if hyperparams is not None:
+            hyperparams.columns = ['psi_d_type', 'phi_d_type', 'adj_square_dimension', 'iterations', 'k', 'lambda_1',
+                                   'lambda_2', 'lambda_3', 'rho_1', 'rho_2']
+            combined_df = pd.concat([combined_df, hyperparams], axis=1)
+
+        return combined_df
+
+    def build_hyperparameters_dataframe(self, psi_d_type: str, phi_d_type: str, adj_square_dimension: int, iterations: int = None, k: int = None, lambda_1: float = None, lambda_2: float = None, lambda_3: float = None, rho_1: float = None, rho_2: float = None):
+        hyperparameters = {
+            'psi_d_type': [psi_d_type],
+            'phi_d_type': [phi_d_type],
+            'adj_square_dimension': [adj_square_dimension],
+            'iterations': [iterations] if iterations is not None else [None],
+            'k': [k] if k is not None else [None],
+            'lambda_1': [lambda_1] if lambda_1 is not None else [None],
+            'lambda_2': [lambda_2] if lambda_2 is not None else [None],
+            'lambda_3': [lambda_3] if lambda_3 is not None else [None],
+            'rho_1': [rho_1] if rho_1 is not None else [None],
+            'rho_2': [rho_2] if rho_2 is not None else [None]
+        }
+
+        hyperparameters_df = pd.DataFrame(hyperparameters)
+        return hyperparameters_df
+
     @staticmethod
     def parse_data(data, data_type: str):
         """
@@ -526,6 +642,26 @@ class TGSD_Home:
                 return data['adj'].dropna().astype(int).values
             if data_type == 'mask':
                 return data['mask'].dropna().astype(np.uint16).values
+            if data_type == 'psi_d_type':
+                return data['psi_d_type'].astype(str).iloc[0]
+            if data_type == 'phi_d_type':
+                return data['phi_d_type'].astype(str).iloc[0]
+            if data_type == 'adj_square_dimension':
+                return data["adj_square_dimension"].iloc[0].astype(int)
+            if data_type == 'iterations':
+                return data["iterations"].astype(int).iloc[0]
+            if data_type == 'k':
+                return data["k"].astype(int).iloc[0]
+            if data_type == 'lambda_1':
+                return data["lambda_1"].astype(float).iloc[0]
+            if data_type == 'lambda_2':
+                return data["lambda_2"].astype(float).iloc[0]
+            if data_type == 'lambda_3':
+                return data["lambda_3"].astype(float).iloc[0]
+            if data_type == 'rho_1':
+                return data["rho_1"].astype(float).iloc[0]
+            if data_type == 'rho_2':
+                return data["rho_2"].astype(float).iloc[0]
 
 #######################################################################################################################
 # Read csv data into DataFrame
@@ -540,6 +676,42 @@ df_mask.columns = ['mask'] * len(df_mask.columns)
 
 # Concatenate DataFrames along axis 1 (horizontally)
 combined_df = pd.concat([df_X, df_adj, df_mask], axis=1)
+# print(combined_df['adj'].values)
+
+# Hyperparameters
+hyperparameters = {
+    'psi_d_type': 'GFT',
+    'phi_d_type': 'DFT',
+    'adj_square_dimension': 175,
+    'iterations': 100,
+    'k': 5,
+    'lambda_1': 0.1,
+    'lambda_2': 0.2,
+    'lambda_3': 0.3,
+    'rho_1': 0.01,
+    'rho_2': 0.02
+}
+
+
+
+# Convert hyperparameters to DataFrame
+hyperparameters_df = pd.DataFrame(hyperparameters, index=[0])
+
+print(hyperparameters_df.columns)
+
+hyperparameters_df.columns = ['psi_d_type', 'phi_d_type', 'adj_square_dimension', 'iterations', 'k', 'lambda_1',
+                       'lambda_2', 'lambda_3', 'rho_1', 'rho_2']
+
+print(hyperparameters_df.columns)
+
+# Concatenate hyperparameters DataFrame with combined_df
+combined_df = pd.concat([combined_df, hyperparameters_df], axis=1)
+
+adj_dim = combined_df["adj_square_dimension"].iloc[0].astype(int)
+
+print(type(adj_dim))
+
+print(combined_df["adj_square_dimension"].iloc[0])
 
 data_csv = TGSD_Home.parse_data('tgsd_demo_data/matlab_demo_X.csv', data_type='X')
 print(data_csv)
@@ -568,4 +740,8 @@ else:
 tgsd = TGSD_Home('config.json')
 stuff = tgsd.config_run(dataframe=combined_df)
 tgsd.tgsd(stuff[0], stuff[1], stuff[2], stuff[3])
+
+stuff2 = tgsd.dataframe_run(dataframe=combined_df)
+tgsd.tgsd(stuff2[0], stuff2[1], stuff2[2], stuff2[3])
+
 #######################################################################################################################
