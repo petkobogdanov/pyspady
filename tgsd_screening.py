@@ -2,7 +2,7 @@ import numpy as np
 
 
 class TGSD_Screening:
-    def __init__(self, x -> np.ndarray[any], right, left):
+    def __init__(self, x: np.ndarray[any], right, left):
         self.data = x
         self.right = right
         self.left = left
@@ -15,6 +15,8 @@ class TGSD_Screening:
         B = np.transpose(self.left) @ xN @ self.right
         Bn = np.abs(B / BijF)
         self.lam_max = np.max(Bn)
+
+    
 
 
 
