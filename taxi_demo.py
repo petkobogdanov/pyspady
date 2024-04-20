@@ -147,7 +147,7 @@ class Taxi_Demo:
             TGSD_Driver.mask = np.random.randint(0, 65536, size=(1, size_y), dtype=np.uint16)
 
             if not self.auto:
-                Y, W = TGSD_Driver.tgsd(TGSD_Driver.X, TGSD_Driver.Psi_D, TGSD_Driver.Phi_D, TGSD_Driver.mask, optimizer_method=self.optimizer_method, learning_rate=0.00000001)
+                Y, W = TGSD_Driver.tgsd(TGSD_Driver.X, TGSD_Driver.Psi_D, TGSD_Driver.Phi_D, TGSD_Driver.mask, iterations=100, optimizer_method=self.optimizer_method, learning_rate=0.00000001)
                 print(f"Imputing {TGSD_Driver.mask.shape[1]} masked values...")
                 TGSD_Driver.return_missing_values(TGSD_Driver.mask, TGSD_Driver.Psi_D, TGSD_Driver.Phi_D, Y, W)
                 # Returns missing values, downloads new CSV and displays graph of imputed values
@@ -166,13 +166,13 @@ class Taxi_Demo:
 
             # Downstream tasks
             if self.perspective == "point":
-                Taxi_2D_Outlier.find_outlier(TGSD_Driver.X, TGSD_Driver.Psi_D, Y, W, TGSD_Driver.Phi_D, .1, 30,
+                Taxi_2D_Outlier.find_outlier(TGSD_Driver.X, TGSD_Driver.Psi_D, Y, W, TGSD_Driver.Phi_D, .1, 5,
                                              p_month=self.month)
             elif self.perspective == "row":
-                Taxi_2D_Outlier.find_row_outlier(TGSD_Driver.X, TGSD_Driver.Psi_D, Y, W, TGSD_Driver.Phi_D, 10,
+                Taxi_2D_Outlier.find_row_outlier(TGSD_Driver.X, TGSD_Driver.Psi_D, Y, W, TGSD_Driver.Phi_D, 5,
                                                  p_month=self.month, p_method=self.method)
             else:
-                Taxi_2D_Outlier.find_col_outlier(TGSD_Driver.X, TGSD_Driver.Psi_D, Y, W, TGSD_Driver.Phi_D, 10,
+                Taxi_2D_Outlier.find_col_outlier(TGSD_Driver.X, TGSD_Driver.Psi_D, Y, W, TGSD_Driver.Phi_D, 5,
                                                  p_month=self.month, p_method=self.method)
             # K-Means
             TwoD_Clustering.cluster(TGSD_Driver.Psi_D, Y)
@@ -198,20 +198,20 @@ class Taxi_Demo:
             return_X, recon_X, phi_y = MDTD_Driver.mdtd(False, MDTD_Driver.X, MDTD_Driver.adj_1, MDTD_Driver.adj_2,
                                                         MDTD_Driver.mask, MDTD_Driver.count_nnz,
                                                         MDTD_Driver.num_iters_check, MDTD_Driver.lam, MDTD_Driver.K,
-                                                        MDTD_Driver.epsilon)
+                                                        MDTD_Driver.epsilon, model=self.optimizer_method)
 
             # Returns missing values, downloads new CSV and displays graph of imputed values
             MDTD_Driver.return_missing_values(MDTD_Driver.mask, recon_X)
             print(f".csv of {len(MDTD_Driver.mask)} imputed values downloaded to tensor_imputed_values.csv.")
             # Downstream tasks
             if self.perspective == "row":
-                MDTD_Outlier.mdtd_find_outlier(return_X, recon_X, 10, "x")
+                MDTD_Outlier.mdtd_find_outlier(return_X, recon_X, 5, "x")
             elif self.perspective == "col":
-                MDTD_Outlier.mdtd_find_outlier(return_X, recon_X, 10, "y")
+                MDTD_Outlier.mdtd_find_outlier(return_X, recon_X, 5, "y")
             else:
-                MDTD_Outlier.mdtd_find_outlier(return_X, recon_X, 10, "z")
+                MDTD_Outlier.mdtd_find_outlier(return_X, recon_X, 5, "z")
 
-            Taxi_Tensor_Clustering.find_clusters(phi_y, 7)
+            Taxi_Tensor_Clustering.find_clusters(phi_y, 5)
 
 # load_taxi_data = load_lat_long()
 # mapping = load_taxi_data['Id_and_lat_long']
