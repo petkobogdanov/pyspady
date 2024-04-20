@@ -1,6 +1,7 @@
 import os
 import math
 import numpy as np
+import scipy.io
 import scipy.sparse as sp
 import pandas as pd
 from Y_unittest import TestYConversion
@@ -18,8 +19,8 @@ class TGSD_Home:
         self.Y, self.W = None, None
 
     def tgsd(self, X, psi_d, phi_d, mask, optimizer_method: str = "admm",
-             iterations: int = 500, k: int = 7, lambda_1: int = 0.1, lambda_2: int = 0.1, lambda_3: int = 1,
-             rho_1: int = 0.01, rho_2: int = 0.01, learning_rate: int = 0.000001, type: str = "rand"):
+             iterations: int = 300, k: int = 7, lambda_1: int = 0.1, lambda_2: int = 0.1, lambda_3: int = 1,
+             rho_1: int = 0.01, rho_2: int = 0.01, learning_rate: int = 1e-8, type: str = "rand"):
         """
         Decomposes a temporal graph signal as a product of two fixed dictionaries and two corresponding sparse encoding matrices
         Args:
@@ -169,7 +170,8 @@ class TGSD_Home:
             return np.linalg.norm(p_D - p_psi @ p_Y @ p_sigma @ p_W @ p_phi, ord=2) \
                    + p_lambda_1 * np.linalg.norm(np.abs(p_Y), ord=1) + p_lambda_2 * np.linalg.norm(np.abs(p_W),
                                                                                                    ord=1) + p_lambda_3 * term_3
-
+        import time
+        start_time = time.time()
         _, t = X.shape
         hold, Y1 = psi_d.shape
         p, t = phi_d.shape
@@ -308,13 +310,19 @@ class TGSD_Home:
             p, t = phi_d.shape
             self.W = np.random.rand(self.k, p)
             self.Y = np.random.rand(m, self.k)
-            self.learning_rate = learning_rate
             mask = np.ones(X.shape, dtype=bool)
             indices = np.unravel_index(self.mask.flatten(), X.shape)
             mask[indices] = False
             tol = 1e-6
             coef_threshold = 1e-3
             inner_iter = 25
+            observed_mask = np.ones(X.shape)
+            observed_mask[mask] = 0
+
+            # Sort X in ascending order by absolute value and select the smallest value, scaled, as a learning rate.
+            idx = int(len(X.flatten()) * 0.1)
+            self.learning_rate = np.sort(np.abs(X.flatten()))[idx] if np.sort(np.abs(X.flatten()))[idx] > 0 else learning_rate
+            iterations = 100
 
             for iter in range(1, iterations + 1):
 
@@ -344,13 +352,13 @@ class TGSD_Home:
                         break
                     self.W = W_next
 
-                obj_new = np.linalg.norm(np.where(mask, X - psi_d @ self.Y @ self.W @ phi_d, 0), ord=2)
+                obj_new = np.linalg.norm(X * observed_mask - ((psi_d @ self.Y @ self.W @ phi_d) * observed_mask),ord=2)
 
-                if iter % 25 == 0:
+                if iter % 10 == 0:
                     objs = [objs, obj_new]
                     residual = abs(obj_old - obj_new)
                     print(f"obj-{iter}={obj_new}, residual-{iter}={residual}")
-                    if residual < 4 * tol:
+                    if residual < tol:
                         break
                     else:
                         obj_old = obj_new
@@ -573,7 +581,6 @@ class TGSD_Home:
                     raise Exception(f"Error saving data: {e}")
         if len(mask_data.shape) < 2:
             mask_data = mask_data.reshape(1, mask_data.shape[0])
-
         return data, psi_d, phi_d, mask_data, k_value, lam_1, lam_2, lam_3, learning_rate
 
     @staticmethod
