@@ -2,7 +2,7 @@
     "X": "Taxi_tensor_data/04_tensor_data",
     "dictionary-1": "GFT",
     "dictionary-2": "GFT",
-    "dictionary-3": "spline",
+    "dictionary-3": "rama",
     "adj-1": "Taxi_tensor_data/04_pickup_adjacency.csv",
     "adj-2": "Taxi_tensor_data/04_dropoff_adjacency.csv",
     "mask_percentage_random": 1,
