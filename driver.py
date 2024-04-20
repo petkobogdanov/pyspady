@@ -59,11 +59,13 @@ if __name__ == '__main__':
                     Taxi_Demo.clean_and_run()
                 else:
                     print("Enter the perspective for MDTD.")
+                    while (mdtd_model_input := input("Enter the optimizer for MDTD: [A]lternating Direction Method of Multipliers or [G]radient Descent: ")) not in ["A", "G"]: pass
+                    mdtd_model = "admm" if mdtd_model_input == "A" else "gd"
                     while (perspective := input("Enter a method [p]point, [r]ow, [c]olumn: ")) not in ['p','r','c']:
                         pass
                     perspective = 'point' if perspective == 'p' else ('col' if perspective == 'c' else 'row')
 
-                    Taxi_Demo = taxi_demo.Taxi_Demo(month, method="both", perspective=perspective, auto=False, optimizer_method=tgsd_model)
+                    Taxi_Demo = taxi_demo.Taxi_Demo(month, method="both", perspective=perspective, auto=False, optimizer_method=mdtd_model)
                     Taxi_Demo.clean_and_run()
         else:
             while (tgsd_or_mdtd := input("Enter the method for [T]GSD or [M]DTD: ")) not in ['T', 'M']: pass
@@ -76,7 +78,7 @@ if __name__ == '__main__':
                     pass
                 if synorno == "y":
                     [x, psi_d, phi_d, mask, k, lam1, lam2, lam3, learning_rate] = tgsd_home.TGSD_Home("tgsd_syn_config.json").config_run(config_path="tgsd_syn_config.json")
-                    Y, W = tgsd_home.TGSD_Home("tgsd_syn_config.json").tgsd(x, psi_d, phi_d, mask, optimizer_method=tgsd_model)
+                    Y, W = tgsd_home.TGSD_Home("tgsd_syn_config.json").tgsd(x, psi_d, phi_d, mask, k=k, optimizer_method=tgsd_model)
 
                 else:
                     print("Do you have a config file already set up?")
@@ -239,6 +241,9 @@ if __name__ == '__main__':
             else:
                 while (synorno := input("Would you like to use the synthetic data first as an example? \n[y]es, [n]o: ")) not in ['y', 'n']:
                     pass
+                while (mdtd_model_input := input("Enter the optimizer for MDTD: [A]lternating Direction Method of Multipliers or [G]radient Descent: ")) not in ["A", "G"]: pass
+                mdtd_model = "admm" if mdtd_model_input == "A" else "gd"
+
                 if synorno == "n":
                     print("Do you have a config?")
                     while(userinput := input("[y]es, [n]o: ")) not in ['y','n']:
@@ -249,11 +254,11 @@ if __name__ == '__main__':
                             pass
                         path = input("Enter path: ") if userinput == 'y' else "mdtd_config.json"
                         obj2 = MDTD_Driver(config_path=path)
-                        tensor, recon_t, phi_y = obj2.mdtd(is_syn=False, X=obj2.X, adj1=obj2.adj_1, adj2=obj2.adj_2, mask=obj2.mask, count_nnz=obj2.count_nnz, num_iters_check=obj2.num_iters_check, lam=obj2.lam, K=obj2.K, epsilon=obj2.epsilon)
+                        tensor, recon_t, phi_y = obj2.mdtd(is_syn=False, X=obj2.X, adj1=obj2.adj_1, adj2=obj2.adj_2, mask=obj2.mask, count_nnz=obj2.count_nnz, num_iters_check=obj2.num_iters_check, lam=obj2.lam, K=obj2.K, epsilon=obj2.epsilon, model=mdtd_model)
 
                 else:
                     obj2 = MDTD_Driver(config_path="mdtd_config.json")
-                    tensor, recon_t, phi_y = obj2.mdtd(is_syn=True, X=obj2.X, adj1=obj2.adj_1, adj2=obj2.adj_2, mask=obj2.mask)
+                    tensor, recon_t, phi_y = obj2.mdtd(is_syn=True, X=obj2.X, adj1=obj2.adj_1, adj2=obj2.adj_2, mask=obj2.mask, model=mdtd_model)
 
                 print(f"Would you like to return {len(obj2.mask)} missing (masked) values? ")
                 userinput = input("[y]es, [n]o ")
