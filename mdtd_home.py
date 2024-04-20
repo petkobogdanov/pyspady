@@ -9,22 +9,18 @@ import dictionary_generation
 from scipy.sparse import csr_matrix
 from scipy.sparse.linalg import spsolve
 import pandas as pd
+
+
 class MDTD_Home:
     def __init__(self, config_path):
         self.X, self.d1, self.d2, self.d3, self.adj_1, self.adj_2, self.mask, \
-                                            self.count_nnz, self.num_iters_check, self.lam, self.K, self.epsilon = self.mdtd_load_config(f"{config_path}")
+        self.count_nnz, self.num_iters_check, self.lam, self.K, self.epsilon = self.mdtd_load_config(f"{config_path}")
         self.PhiY, self.recon_t = None, None
         self.K = 20
-        self.avg_inversion_time = 0
-        self.avg_tensor_recon_time = 0
-        self.avg_mttkrp_time = 0
 
-        self.inversion_count = 0
-        self.tensor_count = 0
-        self.mttkrp_count = 0
 
     def mdtd(self, is_syn: bool, X, adj1, adj2, mask, count_nnz=10, num_iters_check=10, lam=0.000001, K=10,
-             epsilon=1e-4):
+             epsilon=1e-4, model="admm"):
         """
         Performs tensor decomposition across multi-dictionaries
         Args:
@@ -78,41 +74,33 @@ class MDTD_Home:
             Returns:
                 The Matricized Tensor Times Khatri-Rao Product of p_D and p_PhiY along the n-th mode
             """
-            self.mttkrp_count += 1
-            start_mttkrp_time = time.time()
-            #return tl.unfold(p_D, mode=p_n).astype('float32') @ tl.tenalg.khatri_rao(
-            #    [p_PhiY[i].astype('float32') for i in range(len(p_PhiY)) if i != p_n])
-            x = tl.unfold(p_D, mode=p_n).astype('float32') @ tl.tenalg.khatri_rao(
+            return tl.unfold(p_D, mode=p_n).astype('float32') @ tl.tenalg.khatri_rao(
                 [p_PhiY[i].astype('float32') for i in range(len(p_PhiY)) if i != p_n])
-            elapsed = time.time() - start_mttkrp_time
-            self.avg_mttkrp_time += elapsed
-            return x
 
         if is_syn:
             # Generate synthetic data numpy arrays
             MDTD_Demo_Phi, MDTD_Demo_PhiYg, MDTD_Demo_P = mdtd_data_process.MDTD_Data_Process.syn_data_to_numpy()
             self.X = gen_syn_X(MDTD_Demo_PhiYg)  # numpy array of x * y * z
-            import h5py
-            with h5py.File('crime_tensor.mat', 'r') as file:
-                self.X = file['data_tensor'][()].T
+            # import h5py
+            # with h5py.File('crime_tensor.mat', 'r') as file:
+            #    self.X = file['data_tensor'][()].T
 
             X = self.X
             num_modes = self.X.ndim
             lam, rho = gen_syn_lambda_rho(num_modes)  # list of size n
             phi_d = MDTD_Demo_Phi
 
-            phi_d[0, 0] = dictionary_generation.GenerateDictionary.gen_gft_new(scipy.io.loadmat("chicago_adj.mat")["chicago_adj"], False)[0]
-            phi_d[0, 1] = dictionary_generation.GenerateDictionary.gen_spline(24)
-            phi_d[0, 2] = dictionary_generation.GenerateDictionary.gen_spline(6186)
+            # phi_d[0, 0] = dictionary_generation.GenerateDictionary.gen_gft_new(scipy.io.loadmat("chicago_adj.mat")["chicago_adj"], False)[0]
+            # phi_d[0, 1] = dictionary_generation.GenerateDictionary.gen_spline(24)
+            # phi_d[0, 2] = dictionary_generation.GenerateDictionary.gen_spline(6186)
 
             # list of numpy arrays in form (1, n) where each atom corresponds to a dictionary.
             phi_type = ['ortho_dic', 'not_ortho_dic', 'not_ortho_dic']
             # first coordinate of each dictionary = shape of X
             P = MDTD_Demo_P  # Y values of shape of X
-
-            P[0, 0][0] = 77
-            P[0, 1][0] = 24
-            P[0, 2][0] = 24
+            # P[0, 0][0] = 77
+            # P[0, 1][0] = 24
+            # P[0, 2][0] = 24
 
             num_to_mask = int(np.prod(X.shape) * (1 / 100.0))
             all_indices = np.arange(np.prod(X.shape))
@@ -128,9 +116,12 @@ class MDTD_Home:
             phi_d = np.empty((1, num_modes), dtype=object)
 
             for mode in range(num_modes):
-                if mode == 0: nested_dictionary = self.d1
-                elif mode == 1: nested_dictionary = self.d2
-                else: nested_dictionary = self.d3
+                if mode == 0:
+                    nested_dictionary = self.d1
+                elif mode == 1:
+                    nested_dictionary = self.d2
+                else:
+                    nested_dictionary = self.d3
                 phi_d[0, mode] = nested_dictionary
 
             # phi_type = [random.choice(['not_ortho_dic', 'ortho_dic', 'no_dic']) for _ in range(num_modes)]
@@ -187,7 +178,8 @@ class MDTD_Home:
 
         for n in range(len(dimorder)):
             Y_init[n] = np.random.rand(P[0, n][0], K)
-            PhiYInit[n] = (phi_d[0, n] @ Y_init[n]) if phi_type[n] in ["not_ortho_dic", "ortho_dic"] else Y_init[n] # Note potential error here for Ramanujan dictionary (180, 744)
+            PhiYInit[n] = (phi_d[0, n] @ Y_init[n]) if phi_type[n] in ["not_ortho_dic", "ortho_dic"] else Y_init[
+                n]  # Note potential error here for Ramanujan dictionary (180, 744)
             # If Ramanujan dictionary is not "not_dic", PhiYInit entry is 180xK instead of 744xK => phi_d[0, n] entry is 180x744, Y_init entry is 744xK.
             # Resulting in PhiY of 180xK instead of 744xK and incorrect reconstructed tensor.
             # Is a potential solution taking the transpose of the Ramanujan instead?
@@ -208,125 +200,203 @@ class MDTD_Home:
             (normX ** 2) + (tl.norm(self.recon_t, order=2) ** 2) - 2 * tl.tenalg.inner(X, self.recon_t))
         # iterate until convergence
         avg_time = 0
-        for i in range(1, MAX_ITERS + 1):
-            tic = time.time()  # start time
-            for n in range(len(dimorder)):
-                if phi_type[n] == "not_ortho_dic":
-                    # calculate Unew = Phi X_(n) * KhatriRao(all U except n, 'r')
-                    product_vector = np.prod(YPhi_Inner[:, :, list(range(n)) + list(range(n + 1, num_modes))], axis=2)
-                    pv, Ev = np.linalg.eigh(product_vector)
-                    pv = pv.reshape(-1, 1)
 
-                    CC = PhiPhiEV[n].T @ (phi_d[0, n].T @ mttkrp(D, self.PhiY, n) + rho[n] * Z[n] - gamma[n]) @ Ev
-                    Y[n] = CC / (rho[n] + PhiPhiLAM[n] @ pv.T)
-                    Y[n] = PhiPhiEV[n] @ Y[n] @ Ev.T
-                    self.PhiY[n] = phi_d[0, n] @ Y[n]
-                    # normalize_scaling = sqrt(sum(Y{n}.^2, 1))' else max(max(abs(Y{n}), [], 1), 1)'
-                    normalize_scaling = np.sqrt(np.sum(Y[n] ** 2, axis=0)).reshape(-1, 1).T if i == 1 else np.maximum(
-                        np.max(np.abs(Y[n]), axis=0), 1).reshape(-1, 1).T
-                    Y[n] /= normalize_scaling
-                    self.PhiY[n] = phi_d[0, n] @ Y[n]
-                    YPhi_Inner[:, :, n] = self.PhiY[n].T @ self.PhiY[n]
-
-                elif phi_type[n] == "ortho_dic":
-                    # phi_d_rao_other_factors = (phi_d[0, n].T @ mttkrp(D, PhiY, n) + rho[n] * Z[n] - gamma[n])
-                    product_vector = np.prod(YPhi_Inner[:, :, list(range(n)) + list(range(n + 1, num_modes))], axis=2)
-                    # denominator = product_vector + rho[n] * np.eye(K)
-                    other_factors = ((phi_d[0, n].T @ mttkrp(D, self.PhiY, n)) + rho[n] * csr_matrix(Z[n]) - gamma[n]).T
-
-                    self.inversion_count += 1
-                    start_inversion = time.time()
-                    #Y[n] = np.linalg.solve((product_vector + rho[n] * np.eye(K)).T,
-                    #                       (phi_d[0, n].T @ mttkrp(D, self.PhiY, n) + rho[n] * Z[n] - gamma[n]).T).T
-                    Y[n] = spsolve((csr_matrix(product_vector) + rho[n] * scipy.sparse.eye(K, format='csr').T),
-                                   other_factors).T
-                    end_inversion = time.time() - start_inversion
-                    self.avg_inversion_time += end_inversion
-                    normalize_scaling = np.sqrt(np.sum(Y[n] ** 2, axis=0)).reshape(-1, 1).T if i == 1 else np.maximum(
-                        np.max(np.abs(Y[n]), axis=0), 1).reshape(-1, 1).T
-                    Y[n] /= normalize_scaling
-                    self.PhiY[n] = phi_d[0, n] @ Y[n]
-                    YPhi_Inner[:, :, n] = Y[n].T @ Y[n]
-
-                elif phi_type[n] == "no_dic":
-                    product_vector = np.prod(YPhi_Inner[:, :, list(range(n)) + list(range(n + 1, num_modes))], axis=2)
-                    Y[n] = mttkrp(D, self.PhiY, n)
-                    self.inversion_count += 1
-                    # inversion_product_vector = np.prod(YPhi_Inner[:, :, list(range(n)) + list(range(n + 1, num_modes))], axis=2)
-                    start_inversion = time.time()
-                    Y[n] = spsolve(csr_matrix(product_vector).T, csr_matrix(Y[n]).T).T
-                    Y[n] = Y[n].toarray()
-                    #Y[n] = np.linalg.solve(
-                    #    (np.prod(YPhi_Inner[:, :, list(range(n)) + list(range(n + 1, num_modes))], axis=2)).T, Y[n].T).T
-                    end_inversion = time.time() - start_inversion
-                    normalize_scaling = np.sqrt(np.sum(Y[n] ** 2, axis=0)).reshape(-1, 1).T if i == 1 else np.maximum(
-                        np.max(np.abs(Y[n]), axis=0), 1).reshape(-1, 1).T
-                    self.avg_inversion_time += end_inversion
-                    Y[n] /= normalize_scaling
-                    self.PhiY[n] = Y[n]
-                    YPhi_Inner[:, :, n] = Y[n].T @ Y[n]
-                else:
-                    return
-
-                h = Y[n] - gamma[n] / rho[n]
-                Z[n] = np.sign(h) * np.maximum(np.abs(h) - (lam[n] / rho[n]), 0)
-                gamma[n] = gamma[n] + rho[n] * (Z[n] - Y[n])
-                if count_nnz != 0:
-                    nnz = 0
-                    for m in range(len(dimensions)):
-                        # nnz = nnz + length(find(Z{m} ~= 0)
-                        nnz = nnz + np.count_nonzero(Z[m])
-                    objs[i - 1, 2] = nnz
-
-            if (isinstance(mask, list) and len(mask) > 0) or (isinstance(mask, np.ndarray) and mask.any()):
-                if isinstance(mask, list): mask = np.array(mask)
-                # set D to reconstructed values and cast to double for mask indexing
-                self.tensor_count += 1
-                start_reconstruction = time.time()
-                self.recon_t = tl.kruskal_to_tensor(
-                    (normalize_scaling.reshape((normalize_scaling.shape[1],)), [matrix for matrix in self.PhiY]))
-                D = X.copy()  # Make a copy of the input tensor
-
-                # Imputation:
-                mask_i, mask_j, mask_t = np.unravel_index(mask, D.shape)
-                D[mask_i, mask_j, mask_t] = tl.tensor(self.recon_t)[mask_i, mask_j, mask_t]
-
-                end_reconstruction = time.time() - start_reconstruction
-                self.avg_tensor_recon_time += end_reconstruction
-            else:
-                D = X
-
-            time_one_iter = time.time()
-            total_time_one_iter = time_one_iter - tic
-            avg_time += total_time_one_iter
-            if i % num_iters_check == 0:
-                sparsity_constraint = 0
+        if model == "admm":
+            for i in range(1, MAX_ITERS + 1):
+                tic = time.time()  # start time
                 for n in range(len(dimorder)):
-                    sparsity_constraint = sparsity_constraint + lam[n] * np.sum(np.abs(Y[n]))
+                    if phi_type[n] == "not_ortho_dic":
+                        # calculate Unew = Phi X_(n) * KhatriRao(all U except n, 'r')
+                        product_vector = np.prod(YPhi_Inner[:, :, list(range(n)) + list(range(n + 1, num_modes))],
+                                                 axis=2)
+                        pv, Ev = np.linalg.eigh(product_vector)
+                        pv = pv.reshape(-1, 1)
 
-                if len(mask) == 0 or mask_complex == 1:
+                        CC = PhiPhiEV[n].T @ (phi_d[0, n].T @ mttkrp(D, self.PhiY, n) + rho[n] * Z[n] - gamma[n]) @ Ev
+                        Y[n] = CC / (rho[n] + PhiPhiLAM[n] @ pv.T)
+                        Y[n] = PhiPhiEV[n] @ Y[n] @ Ev.T
+                        self.PhiY[n] = phi_d[0, n] @ Y[n]
+                        # normalize_scaling = sqrt(sum(Y{n}.^2, 1))' else max(max(abs(Y{n}), [], 1), 1)'
+                        normalize_scaling = np.sqrt(np.sum(Y[n] ** 2, axis=0)).reshape(-1,
+                                                                                       1).T if i == 1 else np.maximum(
+                            np.max(np.abs(Y[n]), axis=0), 1).reshape(-1, 1).T
+                        Y[n] /= normalize_scaling
+                        self.PhiY[n] = phi_d[0, n] @ Y[n]
+                        YPhi_Inner[:, :, n] = self.PhiY[n].T @ self.PhiY[n]
+
+                    elif phi_type[n] == "ortho_dic":
+                        # phi_d_rao_other_factors = (phi_d[0, n].T @ mttkrp(D, PhiY, n) + rho[n] * Z[n] - gamma[n])
+                        product_vector = np.prod(YPhi_Inner[:, :, list(range(n)) + list(range(n + 1, num_modes))],
+                                                 axis=2)
+                        # denominator = product_vector + rho[n] * np.eye(K)
+                        other_factors = (
+                                    (phi_d[0, n].T @ mttkrp(D, self.PhiY, n)) + rho[n] * csr_matrix(Z[n]) - gamma[n]).T
+
+                        # Y[n] = np.linalg.solve((product_vector + rho[n] * np.eye(K)).T,
+                        #                       (phi_d[0, n].T @ mttkrp(D, self.PhiY, n) + rho[n] * Z[n] - gamma[n]).T).T
+                        Y[n] = spsolve((csr_matrix(product_vector) + rho[n] * scipy.sparse.eye(K, format='csr').T),
+                                       other_factors).T
+
+                        normalize_scaling = np.sqrt(np.sum(Y[n] ** 2, axis=0)).reshape(-1,
+                                                                                       1).T if i == 1 else np.maximum(
+                            np.max(np.abs(Y[n]), axis=0), 1).reshape(-1, 1).T
+                        Y[n] /= normalize_scaling
+                        self.PhiY[n] = phi_d[0, n] @ Y[n]
+                        YPhi_Inner[:, :, n] = Y[n].T @ Y[n]
+
+                    elif phi_type[n] == "no_dic":
+                        product_vector = np.prod(YPhi_Inner[:, :, list(range(n)) + list(range(n + 1, num_modes))],
+                                                 axis=2)
+                        Y[n] = mttkrp(D, self.PhiY, n)
+                        # inversion_product_vector = np.prod(YPhi_Inner[:, :, list(range(n)) + list(range(n + 1, num_modes))], axis=2)
+                        Y[n] = spsolve(csr_matrix(product_vector).T, csr_matrix(Y[n]).T).T
+                        Y[n] = Y[n].toarray()
+                        # Y[n] = np.linalg.solve(
+                        #    (np.prod(YPhi_Inner[:, :, list(range(n)) + list(range(n + 1, num_modes))], axis=2)).T, Y[n].T).T
+                        normalize_scaling = np.sqrt(np.sum(Y[n] ** 2, axis=0)).reshape(-1,
+                                                                                       1).T if i == 1 else np.maximum(
+                            np.max(np.abs(Y[n]), axis=0), 1).reshape(-1, 1).T
+                        Y[n] /= normalize_scaling
+                        self.PhiY[n] = Y[n]
+                        YPhi_Inner[:, :, n] = Y[n].T @ Y[n]
+                    else:
+                        return
+
+                    h = Y[n] - gamma[n] / rho[n]
+                    Z[n] = np.sign(h) * np.maximum(np.abs(h) - (lam[n] / rho[n]), 0)
+                    gamma[n] = gamma[n] + rho[n] * (Z[n] - Y[n])
+                    if count_nnz != 0:
+                        nnz = 0
+                        for m in range(len(dimensions)):
+                            # nnz = nnz + length(find(Z{m} ~= 0)
+                            nnz = nnz + np.count_nonzero(Z[m])
+                        objs[i - 1, 2] = nnz
+
+                if (isinstance(mask, list) and len(mask) > 0) or (isinstance(mask, np.ndarray) and mask.any()):
+                    if isinstance(mask, list): mask = np.array(mask)
+                    # set D to reconstructed values and cast to double for mask indexing
                     self.recon_t = tl.kruskal_to_tensor(
-                    (np.squeeze(normalize_scaling), [matrix for matrix in self.PhiY]))
+                        (normalize_scaling.reshape((normalize_scaling.shape[1],)), [matrix for matrix in self.PhiY]))
+                    D = X.copy()  # Make a copy of the input tensor
 
-                recon_error = tl.sqrt(
-                    (normX ** 2) + (tl.norm(self.recon_t, order=2) ** 2) - 2 * tl.tenalg.inner(X, self.recon_t))
+                    # Imputation:
+                    mask_i, mask_j, mask_t = np.unravel_index(mask, D.shape)
+                    D[mask_i, mask_j, mask_t] = tl.tensor(self.recon_t)[mask_i, mask_j, mask_t]
+                else:
+                    D = X
 
-                fit = 1 - (recon_error / normX)
+                time_one_iter = time.time()
+                total_time_one_iter = time_one_iter - tic
+                avg_time += total_time_one_iter
+                if i % num_iters_check == 0:
+                    sparsity_constraint = 0
+                    for n in range(len(dimorder)):
+                        sparsity_constraint = sparsity_constraint + lam[n] * np.sum(np.abs(Y[n]))
 
-                objs[i // num_iters_check, 0] = fit  # 2, 1 == 1, 0
-                objs[i // num_iters_check, 1] = objs[i // num_iters_check - 1, 1] + total_time_one_iter  # 2, 2 and 1, 2
-                fit_change = np.abs(objs[i // num_iters_check, 0] - objs[i // num_iters_check - 1, 0])
+                    if len(mask) == 0 or mask_complex == 1:
+                        self.recon_t = tl.kruskal_to_tensor(
+                            (np.squeeze(normalize_scaling), [matrix for matrix in self.PhiY]))
 
-                print(
-                    f"Iteration={i} Fit={fit} f-delta={fit_change} Reconstruction Error={recon_error} Sparsity Constraint={sparsity_constraint} Total={objs[i // num_iters_check, :]}")
+                    recon_error = tl.sqrt(
+                        (normX ** 2) + (tl.norm(self.recon_t, order=2) ** 2) - 2 * tl.tenalg.inner(X, self.recon_t))
 
-                if fit_change < epsilon:
-                    print(f"Total time: {avg_time}, Iteration: {i}")
-                    print(f"Algo has met fit change tolerance, avg time per 1 iteration: {avg_time / i}")
-                    print(f"Avg tensor time: {self.avg_tensor_recon_time/self.tensor_count}")
-                    print(f"Avg inversion time: {self.avg_inversion_time/self.inversion_count}")
-                    print(f"Avg mttkrp time: {self.avg_mttkrp_time/self.mttkrp_count}")
-                    break
+                    fit = 1 - (recon_error / normX)
+
+                    objs[i // num_iters_check, 0] = fit  # 2, 1 == 1, 0
+                    objs[i // num_iters_check, 1] = objs[
+                                                        i // num_iters_check - 1, 1] + total_time_one_iter  # 2, 2 and 1, 2
+                    fit_change = np.abs(objs[i // num_iters_check, 0] - objs[i // num_iters_check - 1, 0])
+
+                    print(
+                        f"Iteration={i} Fit={fit} f-delta={fit_change} Reconstruction Error={recon_error} Sparsity Constraint={sparsity_constraint} Total={objs[i // num_iters_check, :]}")
+
+                    if fit_change < epsilon:
+                        print(f"Total time: {avg_time}, Iteration: {i}")
+                        print(f"Algo has met fit change tolerance, avg time per 1 iteration: {avg_time / i}")
+                        break
+        else:
+            # Gradient Descent
+            """
+            For each iteration i from 1 to MAX_ITERS:
+            a. Start timing the iteration.
+            b. For each mode n:
+                i. Compute the gradient grad_Y[n] with respect to the factor matrix Y[n].
+                ii. Update the factor matrix Y[n] using the gradient descent rule: Y[n] = Y[n] - alpha * grad_Y[n].
+            c. If i is a multiple of num_iters_check:
+                i. Compute the reconstructed tensor recon_t from Y and phi_d.
+                ii. If a mask is provided, apply it to X before computing the loss.
+                iii. Compute the loss function value based on the difference between X and recon_t.
+                iv. Store the loss value in objs for convergence checking.
+                v. Print the current iteration, the loss, and other relevant metrics.
+                vi. Check if the change in loss is below the threshold epsilon. If so, break the loop.
+            d. End timing the iteration and update avg_time.
+            """
+            def update_reconstruction(X, Y, mask=None):
+                # Apply weights to tensor reconstruction.
+                # This takes the max. absolute value along axis=0 of each factor matrix in Y.
+                normalize_scaling = np.squeeze(np.max(np.abs(np.concatenate(Y, axis=0)), axis=0, keepdims=True))
+
+                # Impute missing values.
+                self.recon_t = mask * X + (1 - mask) * tl.kruskal_to_tensor((normalize_scaling, self.PhiY))
+
+                return self.recon_t
+
+            LEARNING_RATE = 1e-8
+            tol = 1e-6
+            coef_threshold = 1e-3
+            D = X.copy()
+            tensor_mask = (np.ones(D.shape)).ravel()
+            tensor_mask[mask] = 0
+            tensor_mask = tensor_mask.reshape(D.shape)
+
+            for iter in range(1, MAX_ITERS + 1):
+                # Update PhiY:
+                for n in range(num_modes):
+                    D = update_reconstruction(X, Y, tensor_mask)
+                    # residual = D_i.T - phi_d[0, n] * Y_i * (A . B)
+                    # D = approximation of X.
+                    # D_i is an unfolding along mode i.
+                    # A = ΦjYj , B = ΦlYl where j < l.
+                    # A . B denotes the Khatri-Rao product of A and B
+                    # gradient = lambda[n] * sign[Y_n] - phi_d[0, n].T * residual * (A . B).T
+                    # Already have a method for MTTKRP.
+
+                    # tl.unfold(D, n) = 200x120000
+                    # PhiY[n] = 200x20
+                    # khatri rao = 120000x20
+                    residual = tl.unfold(D, n) - self.PhiY[n] @ (tl.tenalg.khatri_rao(self.PhiY, skip_matrix=n)).T  # 200x120000
+
+
+                    # 200x200 . 200x120000 . 120000x20
+                    grad_Y = lam[n] * np.sign(Y[n]) - (phi_d[0, n].T @ residual @ (tl.tenalg.khatri_rao(self.PhiY, skip_matrix=n)))
+
+                    Y_next = Y[n] - LEARNING_RATE * grad_Y
+                    # Pruning.
+                    Y_next[np.abs(Y_next) < coef_threshold] = 0
+                    Y[n] = Y_next
+                    # Compute PhiY after updating Y.
+                    if phi_type[n] in ['not_ortho_dic', 'ortho_dic']:
+                        self.PhiY[n] = phi_d[0, n] @ Y[n]
+                    else:
+                        self.PhiY[n] = Y[n]
+
+                # Reconstruct tensor using PhiY updates.
+                D = update_reconstruction(X, Y, tensor_mask)
+
+                if iter % 10 == 0:
+                    recon_error = tl.sqrt((normX ** 2) + (tl.norm(self.recon_t, order=2) ** 2) - 2 * tl.tenalg.inner(X, self.recon_t))
+
+                    fit = 1 - (recon_error / normX)
+
+                    objs[iter // num_iters_check, 0] = fit  # 2, 1 == 1, 0
+                    objs[iter // num_iters_check, 1] = objs[iter // num_iters_check - 1, 1]  # 2, 2 and 1, 2
+                    fit_change = np.abs(objs[iter // num_iters_check, 0] - objs[iter // num_iters_check - 1, 0])
+
+                    print(f"Iteration={iter} Fit={fit} f-delta={fit_change} Reconstruction Error={recon_error} Total={objs[i // num_iters_check, :]}")
+
+                    if fit_change < tol:
+                        print(f"Gradient Descent converged at iteration {iter}")
+                        break
 
         # [[S ⊡ Φ1Y1, Φ2Y2, Φ3Y3]
         return self.X, self.recon_t, self.PhiY
@@ -372,7 +442,8 @@ class MDTD_Home:
                 d2 = dictionary_generation.GenerateDictionary.gen_spline(p_signal_length=X.shape[1])
             if config["dictionary-3"] == "rama":
                 d3 = dictionary_generation.GenerateDictionary.gen_rama(t=X.shape[2], max_period=24)
-            else: d3 = dictionary_generation.GenerateDictionary.gen_spline(p_signal_length=X.shape[2])
+            else:
+                d3 = dictionary_generation.GenerateDictionary.gen_spline(p_signal_length=X.shape[2])
 
         # Construct a random, linear indexed mask based on X shape
         mask_percentage = config["mask_percentage_random"]
