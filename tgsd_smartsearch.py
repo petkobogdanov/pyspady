@@ -46,10 +46,10 @@ class CustomEncoder(BaseEstimator, TransformerMixin):
         self.rho2 = rho2
 
         start_time = time.time()
-        self.tgsd_driver.tgsd(self.X, self.Psi_D, self.Phi_D, self.mask, self.iterations, self.K, self.lambda1, self.lambda2,
-                                self.lambda3,
-                                self.rho1,
-                                self.rho2, iterations=100, type="rand", optimizer_method=self.optimizer_method)
+        self.tgsd_driver.tgsd(X=self.X, psi_d=self.Psi_D, phi_d=self.Phi_D, mask=self.mask, optimizer_method=self.optimizer_method, iterations=100, k=self.K, lambda_1=self.lambda1, lambda_2=self.lambda2,
+                                lambda_3=self.lambda3,
+                                rho_1=self.rho1,
+                                rho_2=self.rho2, type="rand")
         end_time = (time.time() - start_time) * 100 # n_iter = 100.
 
         # Hyperparameters to search using a uniform random distribution sampling
@@ -75,10 +75,10 @@ class CustomEncoder(BaseEstimator, TransformerMixin):
             Y and W from TGSD
         """
         X = self.X
-        Y, W = self.tgsd_driver.tgsd(X, self.Psi_D, self.Phi_D, self.mask, self.iterations, self.K, self.lambda1, self.lambda2,
-                                self.lambda3,
-                                self.rho1,
-                                self.rho2, type="rand", optimizer_method=self.optimizer_method)
+        Y, W = self.tgsd_driver.tgsd(X=self.X, psi_d=self.Psi_D, phi_d=self.Phi_D, mask=self.mask, optimizer_method=self.optimizer_method, iterations=100, k=self.K, lambda_1=self.lambda1, lambda_2=self.lambda2,
+                                    lambda_3=self.lambda3,
+                                    rho_1=self.rho1,
+                                    rho_2=self.rho2, type="rand")
         self.Y_ = Y
         self.W_ = W
         return self

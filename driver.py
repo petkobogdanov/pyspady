@@ -99,7 +99,7 @@ if __name__ == '__main__':
                         if userinput == 'y':
                             residual_percent = input("Residual % [0.0, 0.99]: ")
                             coefficient_percent = input("Coefficient % [0.0, 0.99]: ")
-                            tgsd_smartsearch = tgsd_smartsearch.CustomEncoder(config_path="config.json", demo=False,demo_X=None,demo_Phi=None,demo_Psi=None,demo_mask=None, coefficient_threshold=coefficient_percent, residual_threshold=residual_percent)
+                            tgsd_smartsearch = tgsd_smartsearch.CustomEncoder(config_path="config.json", optimizer_method=tgsd_model, demo=False,demo_X=None,demo_Phi=None,demo_Psi=None,demo_mask=None, coefficient_threshold=coefficient_percent, residual_threshold=residual_percent)
                             tgsd_smartsearch.run_smart_search()
                             Y, W = tgsd_smartsearch.get_Y_W()
                         else:
