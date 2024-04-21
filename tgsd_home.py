@@ -1,7 +1,6 @@
 import os
 import math
 import numpy as np
-import scipy.io
 import scipy.sparse as sp
 import pandas as pd
 from Y_unittest import TestYConversion
@@ -9,8 +8,6 @@ from W_unittest import TestWConversion
 import json
 import random
 import dictionary_generation
-import matplotlib.pyplot as plt
-
 
 class TGSD_Home:
     def __init__(self, config_path):
@@ -36,8 +33,8 @@ class TGSD_Home:
             lambda_3: Some sparsity regularization parameter
             rho_1: Some penalty parameter
             rho_2: Some penalty parameter
+            learning_rate: Default learning rate (alpha) of gradient descent
             type: Row, column, or pred mask
-
         Returns:
             Sparse encoding matrices Y and W
         """
@@ -121,7 +118,6 @@ class TGSD_Home:
                 p_Q_4: Some orthonormal eigenvector matrix, Q4
                 p_gamma_2: Some Lagrangian multiplier, Γ2
                 p_rho_2: Some penalty parameter, ρ2
-
             Returns:
                 W = Q3E2QT4
             """

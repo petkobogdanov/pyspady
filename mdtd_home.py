@@ -34,7 +34,8 @@ class MDTD_Home:
             lam: Some user input lambda value as a list
             K: Some user input tensor rank of X
             epsilon: Some user input epsilon value
-
+            model: Either Alternative Direction Method of Multipliers or Gradient Descent
+            More information on these models is provided in the technical report.
         Returns:
             Original input tensor X, reconstructed tensor of X, Phi*Y
         """
@@ -81,26 +82,16 @@ class MDTD_Home:
             # Generate synthetic data numpy arrays
             MDTD_Demo_Phi, MDTD_Demo_PhiYg, MDTD_Demo_P = mdtd_data_process.MDTD_Data_Process.syn_data_to_numpy()
             self.X = gen_syn_X(MDTD_Demo_PhiYg)  # numpy array of x * y * z
-            # import h5py
-            # with h5py.File('crime_tensor.mat', 'r') as file:
-            #    self.X = file['data_tensor'][()].T
 
             X = self.X
             num_modes = self.X.ndim
             lam, rho = gen_syn_lambda_rho(num_modes)  # list of size n
             phi_d = MDTD_Demo_Phi
 
-            # phi_d[0, 0] = dictionary_generation.GenerateDictionary.gen_gft_new(scipy.io.loadmat("chicago_adj.mat")["chicago_adj"], False)[0]
-            # phi_d[0, 1] = dictionary_generation.GenerateDictionary.gen_spline(24)
-            # phi_d[0, 2] = dictionary_generation.GenerateDictionary.gen_spline(6186)
-
             # list of numpy arrays in form (1, n) where each atom corresponds to a dictionary.
             phi_type = ['ortho_dic', 'not_ortho_dic', 'not_ortho_dic']
             # first coordinate of each dictionary = shape of X
             P = MDTD_Demo_P  # Y values of shape of X
-            # P[0, 0][0] = 77
-            # P[0, 1][0] = 24
-            # P[0, 2][0] = 24
 
             num_to_mask = int(np.prod(X.shape) * (1 / 100.0))
             all_indices = np.arange(np.prod(X.shape))
@@ -179,11 +170,7 @@ class MDTD_Home:
         for n in range(len(dimorder)):
             Y_init[n] = np.random.rand(P[0, n][0], K)
             PhiYInit[n] = (phi_d[0, n] @ Y_init[n]) if phi_type[n] in ["not_ortho_dic", "ortho_dic"] else Y_init[
-                n]  # Note potential error here for Ramanujan dictionary (180, 744)
-            # If Ramanujan dictionary is not "not_dic", PhiYInit entry is 180xK instead of 744xK => phi_d[0, n] entry is 180x744, Y_init entry is 744xK.
-            # Resulting in PhiY of 180xK instead of 744xK and incorrect reconstructed tensor.
-            # Is a potential solution taking the transpose of the Ramanujan instead?
-            # For now, just chose no_dic instead
+                n]
             YPhiInitInner[:, :, n] = PhiYInit[n].T @ PhiYInit[n] if phi_type[n] == "not_ortho_dic" else Y_init[n].T @ \
                                                                                                         Y_init[n]
             gamma[n] = 0
