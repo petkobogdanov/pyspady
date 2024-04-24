@@ -61,14 +61,13 @@ Please make sure you already have the latest version of [![Python](https://img.s
 
 ### Datasets
 
-There are numerous datasets available for use in the PySpady library. Due to storage limitations, certain datasets cannot be stored on the Git repository and must be downloaded externally.
+There are numerous datasets available for use in the PySpady library. Due to storage limitations, certain datasets cannot be stored on the Git repository and must be downloaded [externally](https://www.dropbox.com/scl/fo/kjh81g2lcvnefaatbyolo/AOPntjqqGmnECAdGrOvwehk?rlkey=3pb4xe7hxdn0n3b5d1pdh2bwa&st=7f92p3i9&dl=0).
 
-- [New York City taxi pickup and dropoff data, circa 2017: 2D temporal graph signal](). Matrix reconstruction utilizes a GFT and Ramanujan periodic dictionary.
-- [Global airplane traffic, circa : 2D temporal graph signal](). Matrix reconstruction utilizes .
-- [New York City taxi pickup and dropoff data, circa 2017: Multi-way tensors](). Mode-3 tensor reconstruction utilizes a GFT and two Ramanujan periodic dictionaries.
-- [Multi-way tensors synthetic data](). Mode-3 tensor reconstruction utilizes a GFT, a DFT, and a Ramanujan periodic dictionary.
+- New York City taxi pickup and dropoff data, circa 2017: 2D temporal graph signal. Matrix reconstruction utilizes a GFT and Ramanujan periodic dictionary.
+- Global airplane traffic, 2D temporal graph signal. TBD.
+- New York City taxi pickup and dropoff data, circa 2017: Multi-way tensors. Mode-3 tensor reconstruction utilizes a GFT and two Ramanujan periodic dictionaries.
 
-2D temporal graph signal synthetic data is already available. The matrix reconstruction utilizes a GFT and a DFT.
+2D temporal graph signal and multi-way tensor synthetic datasets are already available. The matrix reconstruction utilizes a GFT and a DFT.
     
 
     
