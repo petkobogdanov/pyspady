@@ -41,6 +41,10 @@ if __name__ == '__main__':
                 if tgsd_or_mdtd == "T":
                     while (tgsd_model_input := input("Enter the optimizer for TGSD: [A]lternating Direction Method of Multipliers or [G]radient Descent: ")) not in ["A", "G"]: pass
                     tgsd_model = "admm" if tgsd_model_input == "A" else "gd"
+
+                    while (tgsd_screening_input := input("Would you like to use screening? [y]es, [n]o: ")) not in ['y', 'n']: pass
+                    tgsd_screening_input = True if tgsd_screening_input == 'y' else False
+
                     while (method := input("Enter a method for taxi [p]ickups or [d]ropoffs: ")) not in ['p', 'd']:
                         pass
                     method = 'pickup' if method == 'p' else 'dropoff'
@@ -55,7 +59,7 @@ if __name__ == '__main__':
                         pass
                     auto = True if auto == 'y' else False
 
-                    Taxi_Demo = taxi_demo.Taxi_Demo(month, method, perspective, auto, optimizer_method=tgsd_model)
+                    Taxi_Demo = taxi_demo.Taxi_Demo(month, method, perspective, auto, optimizer_method=tgsd_model, screening_bool=tgsd_screening_input)
                     Taxi_Demo.clean_and_run()
                 else:
                     print("Enter the perspective for MDTD.")
@@ -77,19 +81,25 @@ if __name__ == '__main__':
                 while (synorno := input("Would you like to use the synthetic data first as an example? [y]es, [n]o: ")) not in ['y', 'n']:
                     pass
                 if synorno == "y":
-                    [x, psi_d, phi_d, mask, k, lam1, lam2, lam3, learning_rate] = tgsd_home.TGSD_Home("tgsd_syn_config.json").config_run(config_path="tgsd_syn_config.json")
-                    Y, W = tgsd_home.TGSD_Home("tgsd_syn_config.json").tgsd(x, psi_d, phi_d, mask, k=k, optimizer_method=tgsd_model)
+                    while (tgsd_screening_input := input("Would you like to use screening? [y]es, [n]o: ")) not in ['y', 'n']: pass
+                    tgsd_screening_input = True if tgsd_screening_input == 'y' else False
+
+                    [x, psi_d, phi_d, mask, k, lam1, lam2, lam3, learning_rate] = tgsd_home.TGSD_Home("tgsd_syn_config.json").config_run(config_path="tgsd_syn_config.json", screening_flag=tgsd_screening_input)
+                    Y, W = tgsd_home.TGSD_Home("tgsd_syn_config.json").tgsd(x, psi_d, phi_d, mask, iterations=100, optimizer_method=tgsd_model)
 
                 else:
                     print("Do you have a config file already set up?")
                     while(userinput := input("[y]es, [n]o: ")) not in ['y','n']:
                         pass
+                    while (tgsd_screening_input := input("Would you like to use screening? [y]es, [n]o: ")) not in ['y', 'n']: pass
+                    tgsd_screening_input = True if tgsd_screening_input == 'y' else False
+
                     if(userinput == 'y'):
                         print("Is the path different from config.json?")
                         while(userinput := input("[y]es, [n]o: ")) not in ['y','n']:
                             pass
                         path = input("Enter path: ") if userinput == 'y' else "config.json"
-                        [x, psi_d, phi_d, mask, k, lam1, lam2, lam3, learning_rate] = tgsd_home.TGSD_Home(path).config_run(config_path=path)
+                        [x, psi_d, phi_d, mask, k, lam1, lam2, lam3, learning_rate] = tgsd_home.TGSD_Home(path).config_run(config_path=path, tgsd_screening=tgsd_screening_input)
                         Y, W = tgsd_home.TGSD_Home(path).tgsd(x, psi_d, phi_d, mask, k=k, lambda_1=lam1, lambda_2=lam2, lambda_3=lam3, learning_rate=learning_rate, optimizer_method=tgsd_model)
 
                     else:
@@ -187,6 +197,9 @@ if __name__ == '__main__':
                             print("Please enter the path for the adjacency list.")
                             adj_path = input("Enter a path: ")
 
+                            while (tgsd_screening_input := input("Would you like to use screening? [y]es, [n]o: ")) not in ['y', 'n']: pass
+                            tgsd_screening_input = True if tgsd_screening_input == 'y' else False
+
                             config_json = {
                                 'x': csv_path,
                                 'adj_path': adj_path,
@@ -199,7 +212,9 @@ if __name__ == '__main__':
                                 "learning_rate": learning_rate_value,
                                 'mask_mode': mask_mode,
                                 'mask_percent': mask_percent,
-                                'adj_square_dimension': adj_square_dimension
+                                'adj_square_dimension': adj_square_dimension,
+                                'adj_square_dimension': adj_square_dimension,
+                                "screening": tgsd_screening_input
                             }
 
                             if mask_mode == 'path':

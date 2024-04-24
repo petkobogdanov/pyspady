@@ -11,6 +11,7 @@ import tgsd_clustering
 import taxi_tensor_clustering
 import json
 import tgsd_smartsearch
+import tgsd_screening
 
 GenDict = dictionary_generation.GenerateDictionary
 MDTD_Data_Process = mdtd_data_process.MDTD_Data_Process
@@ -19,14 +20,14 @@ Taxi_2D_Outlier = taxi_2d_outlier.Taxi_2D_Outlier
 TwoD_Clustering = tgsd_clustering.TGSD_Cluster
 Taxi_Tensor_Clustering = taxi_tensor_clustering.Taxi_Tensor_Clustering
 
-
 class Taxi_Demo:
-    def __init__(self, month, method, perspective, auto, optimizer_method):
+    def __init__(self, month, method, perspective, auto, optimizer_method, screening_bool):
         self.month = month
         self.method = method
         self.perspective = perspective
         self.auto = auto
         self.optimizer_method = optimizer_method
+        self.screening = screening_bool
 
     def load_lat_long(self):
         """
@@ -139,12 +140,18 @@ class Taxi_Demo:
             d, adj_matrix = generate_pickup_or_dropoff_adj(adj_template, all_data, self.method, date_range)
             # Perform TGSD
             # Load in config file and override X/Psi/Phi/Mask with taxi data instead
-            TGSD_Driver = tgsd_home.TGSD_Home("config.json")
+            TGSD_Driver = tgsd_home.TGSD_Home("config.json", screening_flag=self.screening)
             TGSD_Driver.X = d
             TGSD_Driver.Psi_D = GenDict.gen_gft_new(adj_matrix, False)[0]
             TGSD_Driver.Phi_D = GenDict.gen_rama(t=d.shape[1], max_period=24)
             size_y = int(.1*adj_matrix.shape[0]*adj_matrix.shape[1])
             TGSD_Driver.mask = np.random.randint(0, 65536, size=(1, size_y), dtype=np.uint16)
+
+            if self.screening:
+                TGSD_Screening = tgsd_screening.TGSD_Screening(x=TGSD_Driver.X, left=TGSD_Driver.Psi_D, right=TGSD_Driver.Phi_D)
+                TGSD_Screening.find_lam_max()
+                TGSD_Screening.ST2_2D(0.8 * TGSD_Screening.lam_max)
+                TGSD_Driver.Psi_D, TGSD_Driver.Phi_D = TGSD_Screening.make_dictonary()
 
             if not self.auto:
                 Y, W = TGSD_Driver.tgsd(TGSD_Driver.X, TGSD_Driver.Psi_D, TGSD_Driver.Phi_D, TGSD_Driver.mask, iterations=100, optimizer_method=self.optimizer_method, learning_rate=0.00000001)

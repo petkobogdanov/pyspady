@@ -8,11 +8,13 @@ from W_unittest import TestWConversion
 import json
 import random
 import dictionary_generation
+import tgsd_screening
 
 class TGSD_Home:
-    def __init__(self, config_path):
+    def __init__(self, config_path, screening_flag=False):
         self.config_path = config_path
-        self.X, self.Psi_D, self.Phi_D, self.mask, self.k, self.lambda_1, self.lambda_2, self.lambda_3, self.learning_rate = self.config_run(config_path=f"{self.config_path}")
+        self.screening_flag = screening_flag
+        self.X, self.Psi_D, self.Phi_D, self.mask, self.k, self.lambda_1, self.lambda_2, self.lambda_3, self.learning_rate = self.config_run(config_path=f"{self.config_path}", screening_flag=self.screening_flag)
         self.Y, self.W = None, None
 
     def tgsd(self, X, psi_d, phi_d, mask, optimizer_method: str = "admm",
@@ -361,7 +363,7 @@ class TGSD_Home:
 
         return self.Y, self.W
 
-    def config_run(self, dataframe: pd.DataFrame = None, config_path: str = "config.json"):
+    def config_run(self, dataframe: pd.DataFrame = None, config_path: str = "config.json", screening_flag: bool = False):
         # data_mode = csv or dataframe
 
         # Try to open the config file
@@ -410,6 +412,11 @@ class TGSD_Home:
                 raise Exception("Invalid 'load_flag', must be a boolean")
             else:
                 load_flag = config["load_flag"]
+
+        # Check the screening flag is enabled and validate the input
+        if "screening" in config:
+            if not (isinstance(config["screening"], bool)):
+                raise Exception(f"Key, 'screening' {config['screening']} is invalid. Please enter a valid bool")
 
         # Try to load the data
         if dataframe is None:
@@ -575,6 +582,15 @@ class TGSD_Home:
                     np.savetxt(save_path, mask_data)
                 except Exception as e:
                     raise Exception(f"Error saving data: {e}")
+
+
+        # Apply screening
+        if(config["screening"] or screening_flag):
+            TGSD_Screening = tgsd_screening.TGSD_Screening(x=data, left=psi_d, right=phi_d)
+            TGSD_Screening.find_lam_max()
+            TGSD_Screening.ST2_2D(0.8 * TGSD_Screening.lam_max)
+            psi_d, phi_d = TGSD_Screening.make_dictonary()
+
         if len(mask_data.shape) < 2:
             mask_data = mask_data.reshape(1, mask_data.shape[0])
         return data, psi_d, phi_d, mask_data, k_value, lam_1, lam_2, lam_3, learning_rate
