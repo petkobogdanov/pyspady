@@ -2,7 +2,7 @@ import dictionary_generation
 import tgsd_home, tgsd_outlier, tgsd_clustering
 import mdtd_home, mdtd_outlier, mdtd_clustering
 import tgsd_smartsearch
-import taxi_demo
+#import taxi_demo
 import json
 from pyfiglet import Figlet
 TGSD_Driver = tgsd_home.TGSD_Home
@@ -11,7 +11,7 @@ TGSD_Cluster = tgsd_clustering.TGSD_Cluster
 MDTD_Driver = mdtd_home.MDTD_Home
 MDTD_Outlier = mdtd_outlier.MDTD_Outlier
 MDTD_Cluster = mdtd_clustering.MDTD_Cluster
-Taxi_Demo = taxi_demo.Taxi_Demo
+#Taxi_Demo = taxi_demo.Taxi_Demo
 Gen_Dict = dictionary_generation.GenerateDictionary
 
 if __name__ == '__main__':
@@ -75,7 +75,10 @@ if __name__ == '__main__':
                 while (synorno := input("Would you like to use the synthetic data first as an example? [y]es, [n]o: ")) not in ['y', 'n']:
                     pass
                 if synorno == "y":
-                    [x, psi_d, phi_d, mask, k, lam1, lam2, lam3, learning_rate] = tgsd_home.TGSD_Home("tgsd_syn_config.json").config_run(config_path="tgsd_syn_config.json")
+                    while (tgsd_screening_input := input("Would you like to use screening? [y]es, [n]o: ")) not in ['y', 'n']: pass
+                    tgsd_screening_input = True if tgsd_screening_input == 'y' else False
+                    
+                    [x, psi_d, phi_d, mask, k, lam1, lam2, lam3, learning_rate] = tgsd_home.TGSD_Home("tgsd_syn_config.json").config_run(config_path="tgsd_syn_config.json", screening_flag=tgsd_screening_input)
                     Y, W = tgsd_home.TGSD_Home("tgsd_syn_config.json").tgsd(x, psi_d, phi_d, mask, optimizer_method=tgsd_model)
 
                 else:
@@ -185,6 +188,9 @@ if __name__ == '__main__':
                             print("Please enter the path for the adjacency list.")
                             adj_path = input("Enter a path: ")
 
+                            while (tgsd_screening_input := input("Would you like to use screening? [y]es, [n]o: ")) not in ['y', 'n']: pass
+                            tgsd_screening_input = True if tgsd_screening_input == 'y' else False
+
                             config_json = {
                                 'x': csv_path,
                                 'adj_path': adj_path,
@@ -197,7 +203,8 @@ if __name__ == '__main__':
                                 "learning_rate": learning_rate_value,
                                 'mask_mode': mask_mode,
                                 'mask_percent': mask_percent,
-                                'adj_square_dimension': adj_square_dimension
+                                'adj_square_dimension': adj_square_dimension,
+                                "screening": tgsd_screening_input
                             }
 
                             if mask_mode == 'path':

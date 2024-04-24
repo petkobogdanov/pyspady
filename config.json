@@ -16,5 +16,6 @@
     "load_path": "save.match",
     "adj_square_dimension": 175,
     "adj_path": "tgsd_demo_data/matlab_demo_adj.csv",
-    "mask_path": "tgsd_demo_data/matlab_demo_mask.csv"
+    "mask_path": "tgsd_demo_data/matlab_demo_mask.csv",
+    "screening": true
 }

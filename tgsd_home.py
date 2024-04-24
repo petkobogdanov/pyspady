@@ -9,6 +9,7 @@ import json
 import random
 import dictionary_generation
 import matplotlib.pyplot as plt
+import tgsd_screening
 
 
 class TGSD_Home:
@@ -357,7 +358,7 @@ class TGSD_Home:
 
         return self.Y, self.W
 
-    def config_run(self, dataframe: pd.DataFrame = None, config_path: str = "config.json"):
+    def config_run(self, dataframe: pd.DataFrame = None, config_path: str = "config.json", screening_flag: bool = False):
         # data_mode = csv or dataframe
 
         # Try to open the config file
@@ -406,6 +407,12 @@ class TGSD_Home:
                 raise Exception("Invalid 'load_flag', must be a boolean")
             else:
                 load_flag = config["load_flag"]
+
+        # Check the screening flag is enabled and validate the input
+        if "screening" in config:
+            if not (isinstance(config["screening"], bool)):
+                    raise Exception(
+                        f"Key, 'screening', {config["save_flag"]} is invalid. Please enter a valid bool")
 
         # Try to load the data
         if dataframe is None:
@@ -574,6 +581,13 @@ class TGSD_Home:
         if len(mask_data.shape) < 2:
             mask_data = mask_data.reshape(1, mask_data.shape[0])
 
+        # Apply screening
+        if(config["screening"] or screening_flag):
+            TGSD_Screening = tgsd_screening.TGSD_Screening(x=data, left=psi_d, right=phi_d)
+            TGSD_Screening.find_lam_max()
+            TGSD_Screening.ST2_2D(0.8 * TGSD_Screening.lam_max)
+            psi_d, phi_d = TGSD_Screening.make_dictonary()
+            
         return data, psi_d, phi_d, mask_data, k_value, lam_1, lam_2, lam_3, learning_rate
 
     @staticmethod
