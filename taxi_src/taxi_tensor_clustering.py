@@ -186,7 +186,7 @@ class Taxi_Tensor_Clustering:
                 radii_time.extend(radii)
 
         # Define location data from CSV
-        location_data = pd.read_csv('Taxi_prep/taxi+_zone_lookup.csv', header=None,
+        location_data = pd.read_csv('../Taxi_prep/taxi+_zone_lookup.csv', header=None,
                                     names=['ID', 'Borough', 'Neighborhood', 'ZoneType'])
 
         # Define grid
@@ -195,7 +195,7 @@ class Taxi_Tensor_Clustering:
         ax = fig.add_subplot(gs[n_clusters // 4:n_clusters - (n_clusters // 4) + 1, 0])
 
         # Read centroids csv to gather locations for IDs
-        df = pd.read_csv("Taxi_prep/NHoodNameCentroids.csv")
+        df = pd.read_csv("../Taxi_prep/NHoodNameCentroids.csv")
         # New dataframe column for geometry
         df['geometry'] = df['the_geom'].apply(wkt.loads)
 
