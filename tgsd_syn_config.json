@@ -3,12 +3,12 @@
     "psi": "GFT",
     "phi": "ram",
     "k": 7,
-    "lam_1": 0.1,
-    "lam_2": 0.1,
-    "lam_3": 1.0,
-    "learning_rate": 1e-8,
-    "mask_mode": "rand",
-    "mask_percent": 15,
+    "lam_1": 0.01,
+    "lam_2": 0.01,
+    "lam_3": 0.01,
+    "learning_rate": 0.0001,
+    "mask_mode": "PATH",
+    "mask_percent": 10,
     "save_flag": false,
     "override": false,
     "save_path": "save.match",
@@ -17,5 +17,5 @@
     "adj_square_dimension": 175,
     "adj_path": "tgsd_demo_data/matlab_demo_adj.csv",
     "mask_path": "tgsd_demo_data/matlab_demo_mask.csv",
-    "screening": true
+    "screening": false
 }
