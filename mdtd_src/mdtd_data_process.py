@@ -26,7 +26,7 @@ class MDTD_Data_Process:
         for i, arr in enumerate(load_phi_yg_array):
             phi_yg_array[0, i] = arr
 
-        list_string = pd.read_csv(f'../mdtd_demo_data/P.csv', header=None).iloc[0]
+        list_string = pd.read_csv(f'mdtd_demo_data/P.csv', header=None).iloc[0]
         p_array_of_arrays = np.empty((list_string.size,), dtype=object)
         for i, item in enumerate(list_string):
             p_array_of_arrays[i] = np.array([item], dtype=np.uint16)

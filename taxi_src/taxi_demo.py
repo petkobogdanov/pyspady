@@ -3,9 +3,8 @@ import numpy as np
 import scipy.io
 import dictionary_generation
 from mdtd_src import mdtd_outlier, mdtd_data_process, mdtd_home
-import taxi_2d_outlier
+from taxi_src import taxi_2d_outlier, taxi_tensor_clustering
 from tgsd_src import tgsd_clustering, tgsd_smartsearch, tgsd_home, tgsd_screening
-import taxi_tensor_clustering
 import json
 
 GenDict = dictionary_generation.GenerateDictionary
@@ -130,12 +129,15 @@ class Taxi_Demo:
         num_locations = 265  # Total number of unique locations
         adj_template = np.zeros((num_locations, num_locations), dtype=int)
 
+        # Use this if you need to rebuild tensor .csv
+        #extract_tensor_csv(all_data, date_range, num_locations, month_st)
+
         if self.method == "pickup" or self.method == "dropoff":
             # Generate respective data and adjacency matrix given method
             d, adj_matrix = generate_pickup_or_dropoff_adj(adj_template, all_data, self.method, date_range)
             # Perform TGSD
             # Load in config file and override X/Psi/Phi/Mask with taxi data instead
-            TGSD_Driver = tgsd_home.TGSD_Home("../config.json", screening_flag=self.screening)
+            TGSD_Driver = tgsd_home.TGSD_Home("tgsd_src/config.json", screening_flag=self.screening)
             TGSD_Driver.X = d
             TGSD_Driver.Psi_D = GenDict.gen_gft_new(adj_matrix, False)[0]
             TGSD_Driver.Phi_D = GenDict.gen_rama(t=d.shape[1], max_period=24)
@@ -158,7 +160,7 @@ class Taxi_Demo:
                 # Run smart search using thresholds of 0.3 and 0.3. Change accordingly.
                 # If demo is changed to False, default values of X/Psi/Phi/mask will be loaded in.
                 # This is *not* what we want for the demo on the taxi dataset.
-                Smart_Search = tgsd_smartsearch.CustomEncoder(config_path="../config.json",
+                Smart_Search = tgsd_smartsearch.CustomEncoder(config_path="tgsd_src/config.json",
                                                               demo=True, demo_X=TGSD_Driver.X, demo_Psi=TGSD_Driver.Psi_D, demo_Phi=TGSD_Driver.Phi_D, demo_mask=TGSD_Driver.mask,
                                                               coefficient_threshold=0.3,
                                                               residual_threshold=0.3)
@@ -187,15 +189,15 @@ class Taxi_Demo:
             # extract_adj_matrix_csv(adj_matrix_pickup, "pickup", month_st)
             # extract_tensor_csv(all_data, date_range, num_locations, month_st)
 
-            with open("../mdtd_src/mdtd_config.json", 'r') as file:
+            with open("mdtd_src/mdtd_config.json", 'r') as file:
                 tensor_data = json.load(file)
             tensor_data["X"] = f"Taxi_tensor_data/{month_st}_tensor_data"
             tensor_data["adj-1"] = f"Taxi_tensor_data/{month_st}_pickup_adjacency.csv"
             tensor_data["adj-2"] = f"Taxi_tensor_data/{month_st}_dropoff_adjacency.csv"
-            with open("../mdtd_src/mdtd_config.json", 'w') as file:
+            with open("mdtd_src/mdtd_config.json", 'w') as file:
                 json.dump(tensor_data, file, indent=4)
             MDTD_Driver = mdtd_home.MDTD_Home(
-                "../mdtd_src/mdtd_config.json")  # Modified config file to fit the month of taxi dropoff.
+                "mdtd_src/mdtd_config.json")  # Modified config file to fit the month of taxi dropoff.
             # Perform MDTD
             return_X, recon_X, phi_y = MDTD_Driver.mdtd(False, MDTD_Driver.X, MDTD_Driver.adj_1, MDTD_Driver.adj_2,
                                                         MDTD_Driver.mask, MDTD_Driver.count_nnz,

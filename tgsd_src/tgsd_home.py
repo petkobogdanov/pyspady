@@ -8,7 +8,7 @@ from W_unittest import TestWConversion
 import json
 import random
 import dictionary_generation
-import tgsd_screening
+from tgsd_src import tgsd_screening
 
 class TGSD_Home:
     def __init__(self, config_path, screening_flag=False):
@@ -363,7 +363,7 @@ class TGSD_Home:
 
         return self.Y, self.W
 
-    def config_run(self, dataframe: pd.DataFrame = None, config_path: str = "config.json", screening_flag: bool = False):
+    def config_run(self, dataframe: pd.DataFrame = None, config_path: str = "tgsd_src/config.json", screening_flag: bool = False):
         # data_mode = csv or dataframe
 
         # Try to open the config file

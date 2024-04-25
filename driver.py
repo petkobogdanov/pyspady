@@ -1,8 +1,7 @@
 import dictionary_generation
-import tgsd_home, tgsd_outlier, tgsd_clustering
-import mdtd_home, mdtd_outlier, mdtd_clustering
-import tgsd_smartsearch
-import taxi_demo
+from tgsd_src import tgsd_clustering, tgsd_outlier, tgsd_smartsearch, tgsd_home
+from mdtd_src import mdtd_outlier, mdtd_clustering, mdtd_home
+from taxi_src import taxi_demo
 import json
 from pyfiglet import Figlet
 TGSD_Driver = tgsd_home.TGSD_Home
@@ -50,7 +49,7 @@ if __name__ == '__main__':
                     method = 'pickup' if method == 'p' else 'dropoff'
 
                     print("Enter the perspective for TGSD. This determines how you choose to view outliers, where rows represent physical locations and columns represent time. ")
-                    while (perspective := input("Enter a method [p]point, [r]ow, [c]olumn: ")) not in ['p','r','c']:
+                    while (perspective := input("Enter a method [p]oint, [r]ow, [c]olumn: ")) not in ['p','r','c']:
                         pass
                     perspective = 'point' if perspective == 'p' else ('col' if perspective == 'c' else 'row')
 
@@ -65,11 +64,11 @@ if __name__ == '__main__':
                     print("Enter the perspective for MDTD.")
                     while (mdtd_model_input := input("Enter the optimizer for MDTD: [A]lternating Direction Method of Multipliers or [G]radient Descent: ")) not in ["A", "G"]: pass
                     mdtd_model = "admm" if mdtd_model_input == "A" else "gd"
-                    while (perspective := input("Enter a method [p]point, [r]ow, [c]olumn: ")) not in ['p','r','c']:
+                    while (perspective := input("Enter a method [p]oint, [r]ow, [c]olumn: ")) not in ['p','r','c']:
                         pass
                     perspective = 'point' if perspective == 'p' else ('col' if perspective == 'c' else 'row')
 
-                    Taxi_Demo = taxi_demo.Taxi_Demo(month, method="both", perspective=perspective, auto=False, optimizer_method=mdtd_model)
+                    Taxi_Demo = taxi_demo.Taxi_Demo(month, method="both", perspective=perspective, auto=False, optimizer_method=mdtd_model, screening_bool=False)
                     Taxi_Demo.clean_and_run()
         else:
             while (tgsd_or_mdtd := input("Enter the method for [T]GSD or [M]DTD: ")) not in ['T', 'M']: pass
@@ -80,26 +79,26 @@ if __name__ == '__main__':
 
                 while (synorno := input("Would you like to use the synthetic data first as an example? [y]es, [n]o: ")) not in ['y', 'n']:
                     pass
-                if synorno == "y":
-                    while (tgsd_screening_input := input("Would you like to use screening? [y]es, [n]o: ")) not in ['y', 'n']: pass
-                    tgsd_screening_input = True if tgsd_screening_input == 'y' else False
 
-                    [x, psi_d, phi_d, mask, k, lam1, lam2, lam3, learning_rate] = tgsd_home.TGSD_Home("tgsd_syn_config.json").config_run(config_path="tgsd_syn_config.json", screening_flag=tgsd_screening_input)
-                    Y, W = tgsd_home.TGSD_Home("tgsd_syn_config.json").tgsd(x, psi_d, phi_d, mask, iterations=100, optimizer_method=tgsd_model)
+                while (tgsd_screening_input := input("Would you like to use screening? [y]es, [n]o: ")) not in ['y', 'n']: pass
+                tgsd_screening_input = True if tgsd_screening_input == 'y' else False
+
+                if synorno == "y":
+                    [x, psi_d, phi_d, mask, k, lam1, lam2, lam3, learning_rate] = tgsd_home.TGSD_Home(
+                        "tgsd_src/tgsd_syn_config.json").config_run(config_path="tgsd_src/tgsd_syn_config.json", screening_flag=tgsd_screening_input)
+                    Y, W = tgsd_home.TGSD_Home("tgsd_src/tgsd_syn_config.json").tgsd(x, psi_d, phi_d, mask, iterations=100, optimizer_method=tgsd_model)
 
                 else:
                     print("Do you have a config file already set up?")
                     while(userinput := input("[y]es, [n]o: ")) not in ['y','n']:
                         pass
-                    while (tgsd_screening_input := input("Would you like to use screening? [y]es, [n]o: ")) not in ['y', 'n']: pass
-                    tgsd_screening_input = True if tgsd_screening_input == 'y' else False
 
                     if(userinput == 'y'):
-                        print("Is the path different from config.json?")
+                        print("Is the path different from tgsd_src/config.json?")
                         while(userinput := input("[y]es, [n]o: ")) not in ['y','n']:
                             pass
-                        path = input("Enter path: ") if userinput == 'y' else "config.json"
-                        [x, psi_d, phi_d, mask, k, lam1, lam2, lam3, learning_rate] = tgsd_home.TGSD_Home(path).config_run(config_path=path, tgsd_screening=tgsd_screening_input)
+                        path = input("Enter path: ") if userinput == 'y' else "tgsd_src/config.json"
+                        [x, psi_d, phi_d, mask, k, lam1, lam2, lam3, learning_rate] = tgsd_home.TGSD_Home(path).config_run(config_path=path, screening_flag=tgsd_screening_input)
                         Y, W = tgsd_home.TGSD_Home(path).tgsd(x, psi_d, phi_d, mask, k=k, lambda_1=lam1, lambda_2=lam2, lambda_3=lam3, learning_rate=learning_rate, optimizer_method=tgsd_model)
 
                     else:
@@ -109,7 +108,7 @@ if __name__ == '__main__':
                         if userinput == 'y':
                             residual_percent = input("Residual % [0.0, 0.99]: ")
                             coefficient_percent = input("Coefficient % [0.0, 0.99]: ")
-                            tgsd_smartsearch = tgsd_smartsearch.CustomEncoder(config_path="config.json", optimizer_method=tgsd_model, demo=False,demo_X=None,demo_Phi=None,demo_Psi=None,demo_mask=None, coefficient_threshold=coefficient_percent, residual_threshold=residual_percent)
+                            tgsd_smartsearch = tgsd_smartsearch.CustomEncoder(config_path="tgsd_src/config.json", optimizer_method=tgsd_model, demo=False, demo_X=None, demo_Phi=None, demo_Psi=None, demo_mask=None, coefficient_threshold=coefficient_percent, residual_threshold=residual_percent)
                             tgsd_smartsearch.run_smart_search()
                             Y, W = tgsd_smartsearch.get_Y_W()
                         else:
@@ -223,7 +222,7 @@ if __name__ == '__main__':
                             with open(config_path, "w") as outfile:
                                 json.dump(config_json, outfile)
 
-                            [x, psi_d, phi_d, mask, k, lam1, lam2, lam3, learning_rate] = tgsd_home.TGSD_Home(config_path).config_run(config_path=config_path)
+                            [x, psi_d, phi_d, mask, k, lam1, lam2, lam3, learning_rate] = tgsd_home.TGSD_Home(config_path).config_run(config_path=config_path, screening_flag=tgsd_screening_input)
                             Y, W = tgsd_home.TGSD_Home(config_path).tgsd(x, psi_d, phi_d, mask, k=k, lambda_1=lam1, lambda_2=lam2, lambda_3=lam3, learning_rate=learning_rate, optimizer_method=tgsd_model)
 
                 print(f"Would you like to return {mask.shape[1]} missing (masked) values? ")
@@ -260,19 +259,19 @@ if __name__ == '__main__':
                 mdtd_model = "admm" if mdtd_model_input == "A" else "gd"
 
                 if synorno == "n":
-                    print("Do you have a config?")
+                    print("Do you have a config file already set up?")
                     while(userinput := input("[y]es, [n]o: ")) not in ['y','n']:
                         pass
                     if(userinput == 'y'):
-                        print("Is the path different from mdtd_config.json?")
+                        print("Is the path different from mdtd_src/mdtd_config.json?")
                         while(userinput := input("[y]es, [n]o: ")) not in ['y','n']:
                             pass
-                        path = input("Enter path: ") if userinput == 'y' else "mdtd_config.json"
+                        path = input("Enter path: ") if userinput == 'y' else "mdtd_src/mdtd_config.json"
                         obj2 = MDTD_Driver(config_path=path)
                         tensor, recon_t, phi_y = obj2.mdtd(is_syn=False, X=obj2.X, adj1=obj2.adj_1, adj2=obj2.adj_2, mask=obj2.mask, count_nnz=obj2.count_nnz, num_iters_check=obj2.num_iters_check, lam=obj2.lam, K=obj2.K, epsilon=obj2.epsilon, model=mdtd_model)
 
                 else:
-                    obj2 = MDTD_Driver(config_path="mdtd_config.json")
+                    obj2 = MDTD_Driver(config_path="mdtd_src/mdtd_config.json")
                     tensor, recon_t, phi_y = obj2.mdtd(is_syn=True, X=obj2.X, adj1=obj2.adj_1, adj2=obj2.adj_2, mask=obj2.mask, model=mdtd_model)
 
                 print(f"Would you like to return {len(obj2.mask)} missing (masked) values? ")

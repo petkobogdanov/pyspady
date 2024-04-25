@@ -1,10 +1,13 @@
-from sklearn.model_selection import ParameterSampler
-from sklearn.base import BaseEstimator, TransformerMixin
+import time
+
 import numpy as np
 from scipy.stats import randint as sp_randint
 from scipy.stats import uniform
-import tgsd_home
-import time
+from sklearn.base import BaseEstimator, TransformerMixin
+from sklearn.model_selection import ParameterSampler
+
+from tgsd_src import tgsd_home
+
 
 class CustomEncoder(BaseEstimator, TransformerMixin):
     def __init__(self, config_path, demo, demo_X, demo_Phi, demo_Psi, demo_mask, coefficient_threshold, residual_threshold, optimizer_method, K=7, iterations=100, lambda1=0.1,

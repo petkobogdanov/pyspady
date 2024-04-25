@@ -5,8 +5,6 @@ import scipy
 import scipy.sparse as sp
 from scipy.fftpack import fft
 import pandas as pd
-from scipy.interpolate import BSpline
-
 class GenerateDictionary:
     @staticmethod
     def load_tgsd_demo() -> dict:

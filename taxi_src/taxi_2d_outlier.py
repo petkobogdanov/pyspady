@@ -54,7 +54,7 @@ class Taxi_2D_Outlier:
         res = p_X - (p_Psi @ p_Y @ p_W @ p_Phi)
         reconstructed_X = p_Psi @ p_Y @ p_W @ p_Phi
 
-        location_data = pd.read_csv('../Taxi_prep/taxi+_zone_lookup.csv', header=None,
+        location_data = pd.read_csv('Taxi_prep/taxi+_zone_lookup.csv', header=None,
                                     names=['ID', 'Borough', 'Neighborhood', 'ZoneType'])
 
         # Used for indexing
@@ -218,7 +218,7 @@ class Taxi_2D_Outlier:
         p_count = min(p_count, 10)
         outlier_rows = sorted_rows[:p_count]
         num_plots = len(outlier_rows)
-        location_data = pd.read_csv('../Taxi_prep/taxi+_zone_lookup.csv', header=None,
+        location_data = pd.read_csv('Taxi_prep/taxi+_zone_lookup.csv', header=None,
                                     names=['ID', 'Borough', 'Neighborhood', 'ZoneType'])
 
         # Define grid
@@ -227,7 +227,7 @@ class Taxi_2D_Outlier:
         ax = fig.add_subplot(gs[p_count // 4:p_count - (p_count // 4) + 1, 0])
 
         # Read centroids csv to gather locations for IDs
-        df = pd.read_csv("../Taxi_prep/NHoodNameCentroids.csv")
+        df = pd.read_csv("Taxi_prep/NHoodNameCentroids.csv")
         # New dataframe column for geometry
         df['geometry'] = df['the_geom'].apply(wkt.loads)
         # Add CRS to new GDF

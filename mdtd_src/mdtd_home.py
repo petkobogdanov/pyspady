@@ -4,12 +4,11 @@ import tensorly as tl
 import scipy.sparse as sp
 import time
 import json
-import mdtd_data_process
-import dictionary_generation
+from mdtd_src import mdtd_data_process
 from scipy.sparse import csr_matrix
 from scipy.sparse.linalg import spsolve
 import pandas as pd
-
+import dictionary_generation
 
 class MDTD_Home:
     def __init__(self, config_path):
