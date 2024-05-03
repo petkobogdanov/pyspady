@@ -25,7 +25,7 @@
 PySpady enables users from all disciplines to leverage state-of-the-art and classical sparse encoding algorithms and methodologies to jointly model **spatial-temporal data** by graph and temporal dictionaries. The current implementation efficiently exploits both structural graph regularities and temporal patterns encoded within [**2D temporal graph signals**](https://www.cs.albany.edu/~petko/lab/papers/mzb2021kdd.pdf) and more generally any [**multi-way tensors**](https://arxiv.org/abs/2309.09717) with priors on all or a subset of modes.
 
 ## Current Features & Future Action Items
-- [x] Missing value imputation Output: The input matrix with missing values imputed (filled in) using the selected imputation method).
+- [x] Missing value imputation
       **Input:** A matrix/tensor of data, which can be provided as a CSV file. This matrix may contain missing values.
       **Output:** The input matrix with missing values imputed (filled in) using the selected imputation method.
 - [x] Future value prediction (Input: A matrix/tensor of data, which can be provided as a CSV file. This matrix may contain missing values. Output: Predicted future values for the data based on the temporal patterns and trends identified in the input matrix).
