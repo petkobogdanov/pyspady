@@ -24,22 +24,20 @@
 
 PySpady enables users from all disciplines to leverage state-of-the-art and classical sparse encoding algorithms and methodologies to jointly model **spatial-temporal data** by graph and temporal dictionaries. The current implementation efficiently exploits both structural graph regularities and temporal patterns encoded within [**2D temporal graph signals**](https://www.cs.albany.edu/~petko/lab/papers/mzb2021kdd.pdf) and more generally any [**multi-way tensors**](https://arxiv.org/abs/2309.09717) with priors on all or a subset of modes.
 
-## Current Features & Future Action Items
-- [x] Missing value imputation
-      **Input:** A matrix/tensor of data, which can be provided as a CSV file. This matrix may contain missing values.
-      
+## Current Features & Future Deliverables
+- [x] Missing value imputation </br>
+      **Input:** A matrix/tensor of data, which can be provided as a CSV file. This matrix may contain missing values. </br>
       **Output:** The input matrix with missing values imputed (filled in) using the selected imputation method.
-      
-- [x] Future value prediction (Input: A matrix/tensor of data, which can be provided as a CSV file. This matrix may contain missing values. Output: Predicted future values for the data based on the temporal patterns and trends identified in the input matrix).
-      **Input:** A matrix/tensor of data, which can be provided as a CSV file. This matrix may contain missing values.
+- [x] Future value prediction </br>
+      **Input:** A matrix/tensor of data, which can be provided as a CSV file. This matrix may contain missing values. </br>
       **Output:** Predicted future values for the data based on the temporal patterns and trends identified in the input matrix.
-- [x] Automatic hyperparameter optimization
-      **Input:** A JSON configuration file specifying user preferences and settings for the various features and optimizers. 
+- [x] Automatic hyperparameter optimization </br>
+      **Input:** A JSON configuration file specifying user preferences and settings for the various features and optimizers. </br>
       **Output:** Automatically optimized hyperparameters for the selected machine learning models and algorithms.
 - [x] [TGSD](https://www.cs.albany.edu/~petko/lab/papers/mzb2021kdd.pdf) and [MDTD](https://arxiv.org/abs/2309.09717) optimizers: [Alternating Direction Method of Multipliers](https://stanford.edu/~boyd/admm.html) and [Gradient Descent](https://www.ibm.com/topics/gradient-descent)
 - [x] [![JSON](https://img.shields.io/badge/JSON-8A2BE2?style=flat&logo=json&logoColor=white)](https://www.json.org/json-en.html) [![Pandas](https://img.shields.io/badge/pandas-150458?style=flat&logo=pandas&logoColor=white)](https://pandas.pydata.org/) user input configurations
-- [x] Dictionary screening
-      **Input:** A dictionary of signals to be screened for relevance to the temporal patterns.
+- [x] Dictionary screening </br>
+      **Input:** A dictionary of signals to be screened for relevance to the temporal patterns. </br>
       **Output:** A filtered dictionary containing only the signals deemed relevant to the temporal patterns based on the screening process.
 - [x] Outlier detection with visualizations
 - [x] Community detection with visualizations
