@@ -1,5 +1,5 @@
 <div align="center">
-  <img src="assets/pyspady-logo.png" alt="PySpady Logo">
+  <img src="assets/PySpady-logo-color.png" alt="PySpady Logo">
 </div>
 
 # PySpady: A Python sparse multi-dictionary coding library
